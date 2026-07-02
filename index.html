@@ -1,0 +1,2137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gravity God — Boss Prototype</title>
+<style>
+  html,body{ margin:0; padding:0; height:100%; background:#070509; font-family:'Courier New', monospace; color:#e8e0f0; overflow:hidden; }
+  #wrap{ display:flex; flex-direction:column; align-items:center; height:100%; justify-content:center; gap:10px; }
+  canvas{ background:#070509; border:1px solid #2a1f38; box-shadow:0 0 50px rgba(122,31,61,0.25); }
+  #info{ max-width:880px; font-size:13px; line-height:1.5; color:#a89bc0; padding:0 16px; text-align:center; }
+  #info b{ color:#e8e0f0; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="760" height="760"></canvas>
+  <div id="info">
+    <b>Move:</b> A/D &nbsp; <b>Jump / Double Jump:</b> Space or W &nbsp; <b>Dash ×2:</b> double-tap A/D or Ctrl &nbsp;
+    <b>Dive (airborne):</b> double-tap S &nbsp; <b>Dodge:</b> Q &nbsp; <b>Aim:</b> Arrow keys &nbsp;
+    <b>Pulse:</b> Shift &nbsp; <b>Grab / Pull:</b> E (hold to pull rooted plants) &nbsp;
+    <b>Throw:</b> hold E then release &nbsp; <b>Catch incoming:</b> hold E on impact &nbsp;
+    <b>Counter-magic:</b> hold E near bullets to absorb them, release E to fire them back &nbsp; <b>Reset:</b> R
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false; // keep pixel-art sprites crisp when scaled, not blurred
+const CW = canvas.width, CH = canvas.height;
+
+// Player sprite (embedded so the file stays a single, shareable .html). Swap the data
+// URI to use a different image — PNG/WebP with transparency is ideal here.
+const playerSprite = new Image();
+let playerSpriteReady = false;
+playerSprite.onload = () => { playerSpriteReady = true; };
+playerSprite.src = "data:image/png;base64,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";
+
+
+// Mandrake sprites (all 47x59 source px, embedded for the same single-file reason as the
+// player sprite). Root.png supplies the rooted "just leaves" crop; the two Mandrake_*
+// images are randomized per-plant calm looks; the two Mandrake_cry_* images are a
+// 2-frame crying flipbook played once a pull reveals a scream.
+const MANDRAKE_SHEET_W = 47, MANDRAKE_SHEET_H = 59;
+const MANDRAKE_LEAF_CROP_H = 26; // top 26 source px = leaves only, confirmed clear of any face pixels
+function makeMandrakeImg(b64){
+  const img = new Image();
+  img.ready = false;
+  img.onload = () => { img.ready = true; };
+  img.src = "data:image/png;base64," + b64;
+  return img;
+}
+// Root.png — reserved for non-mandrake roots per your note; not currently drawn anywhere.
+const mandrakeRootImg  = makeMandrakeImg("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");
+const mandrakeCalmImg  = [makeMandrakeImg("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"), makeMandrakeImg("iVBORw0KGgoAAAANSUhEUgAAAC8AAAA7CAYAAADrYNMhAAAACXBIWXMAAAsTAAALEwEAmpwYAAAG1klEQVRogc1aXWgcVRj9dok0gj+JD2nTpD8hCElDTDYEwTxVI1RqlBSURmsrQbQRHwQfBFNqSaUKPggRpKkixfoX8aGh1dJig30KVELSJjQJaGyrNW3z0KT1IRWDI+funtlvb2ays5uZJQeW3blzZ+Z85zvfd++EiOM4EtWncVe5E+X94xIREi+td7r315vvqJ4Rj+KmINz58ibzu7313sgCiEuEmBj6TUory0wAUSAG74SJPYdqnOr1/7rH0zP3SPOjpTJ3bVYGBhdk9KuZ2KpUHsRBFGoDIEtgrL72gdVvm7lrs+b75sXb7vHwL3Pmd5j+LwrrRh//9JijiUPptQ0LMj55R8YnUbjJsVWnfCKl5jPPbTJWgc+1+rALiHNs1SlPoLMMDCbVBvG1DQ8KCpgFK5Kug1XjeZC7/scdtzXS72yTLF5kIRGS70NTHuTaW2ddX0NxfY6BlFaWmjrwgl9Qfu01NPIgBq/LzJxUr6d9FuTIRzdMIMyAn+8TqVW5fGNmO0U2cc4rgFA9D2+DcLK7pFdV/jbBGSxkkIaVOAdkEaDuTDjXc7TaZEUvdMuusLmkEXNtfwPw/t631rnEEeCBzumYfQ3OM3h9HwSGcQajV2pf8vrGuJCLDEDP2kFAHc7FHBbtkx0b3Ov0NT1qPnG2/0/3N+vGFoWWLPLzHiKenhGzL4EPm0XMQ3AMJdIWSCOpVJqIJoBrju1LE0+kxCFxktaFbhNn4HREhvJ6KwtQQQDjR7+46v7m+WP7pjLUp4epPMjwWKu+51CN+2BN3GsH6rWhw3Nc8iSuCRNMvwatAHgFwOuopNfDxZoDIFBkl4Bgy7ZK7W/7BtqPDA5K4UNVbdjp9SMO8B60IoXjtnq5LbQhr63Ci3S7wnn2Z9xcFyAtYNvCD9pWAIkDrCduL4ADneKLIi91uC9ngTIQpJBZwRgeAMtgPl/39H00SZv4aEZ2kgHoBSyIEJ6tUqdVFyet5PVWROtxnERZD/Z5CQGeK6xNyq6B8cmlBEjY64U7CuKB32E1mWwPJ9HYmTVyvGhediyWiLPtH1/iiZQ4XF1zCS7Q3iaXG24YuyuxxRL5/McpaagqkbKWYpHzxbJjcc2SAAHdrbzqpqAvI81b1pnvd3Y1umOnhq7IibFbnt5PpLJ6tv+26WL1tUtX7oL86ePZRx5yQL6spFi2ba2RS7/elLqH18qZc1Pm/Oz8XfN9vGjezSZXWq7I2MQBQSwUj5L4tb/mzDeO8cE5YFSR0v0eCxb2/zzOhnjYxCsr0ks7wADwwTnM2XR/PKMB2AFw05ftdTE0z1NxADZhEPhGALRMU125vPJ0cp4OwF7E8J1N/RV7Hqpvb9nsEv9y4IJrDwCkQRjeh/ojl66b8eGJG24R2/BaiSNVHmq/fmTU/O7ZWWsIA6eGkmMAAgBGUgH4QXehyD0P1T/4+oL5vfG+TKFOjqd3pew+wMXL85ItgGzdJjTl4WNYobf7qYzxkwefkE+/T6sP/zfVlZu5K0Uo5KHo7vZG2d0uru8JjL/2fMIEALURZGVFGE8NUXkEAICktgqzgQCgehDPB8WKPQ81QQZe1sTpfRy/+f5pc54daXiZTlMw5dEm6XVaBqQxhnaJNnngu0kTIDMTpFgjJ49V8txnHeb38MRp43P0+97uGncvA78zCG2XhqoSCQN5L1J9XU0ObABLgDQJeq26CEafLyspzthpFtTzP7zX6pAULKA3XSRHxdl5kt0omYnKilJTxLBdwWxjbwWAq3//F+M4A9DnqTqD0EH2pgLINwM5e97eNaYL8Iq7QIGwDoDA2xU9v71lc0YG8gkgZ8/DMmh7W1/tN6of7NjiQE1sD0hKQ+80kYF3+ycMSWYLAeB+qJ1cA4jnShzfJM5xEPjk7cdNBlCIOOYLCFokuw+CRKGLiCGKudzv54PA5PnQNz782SVO1blyonXaexsGx2B01zkxdivGDR2ykGsBZ/U804uHzs5f960B9nDuGvUOku+x2jYEXtQRPLLAAILaJ5DyuDEfCntoUHWdAT0O6D6PbIlH8LRRLhnIqWAv97/ooOVp9TQZ9nC+NemM8G2K/u/qG4lpS3LRIvEg6gf2PEiCkJ12fQxCIOtF3H63tcEuBdJBbRO4z2PzhU/b/qVBgRyJ6mDaVGZoI20nAqoDXZIbApP3UwNLPq3gBdYC7YS5Xcoyy907K/L957SenbXO79++4Bzem8j6T3CYE3SuU4h/kIOiVR3fxIKuD8tlJ1/kRZ6EAFhAH9vzYBfMoVX85haEPAvQ9q0XQLxt/2BGN8Iq2xdWAPl43fZzNr97jR0Owf8rLpqgBZvPddnI/w/Htd3j8rupcQAAAABJRU5ErkJggg==")];
+const mandrakeCryImg   = [makeMandrakeImg("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"), makeMandrakeImg("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")];
+
+// ---------- tuning ----------
+const GRAVITY_ACCEL   = 1500;
+const MOVE_ACCEL       = 1900; // was 2200 — a little slower baseline now that dash exists
+const GROUND_FRICTION   = 5200; // was 2600 — crisp, immediate stop on the ground
+const AIR_FRICTION      = 1400; // horizontal drag while airborne — prevents coasting after a dash or slam
+const JUMP_SPEED        = 600;
+const MAX_SPEED         = 780;  // was 950 — new normal cap; dashing is what gets you back up to speed
+const MAX_SPEED_DASH    = 950;  // today's old cap — a full double-dash temporarily allows this much
+const DAMPING           = 0.994;
+
+// ---------- dash & double jump ----------
+const DASH_CHARGES_MAX   = 2;    // mirrors double-jump: 2 uses before needing to touch ground again
+const DASH_SPEED_SINGLE  = 780;  // one dash instantly reaches the new normal cap
+const DASH_SPEED_DOUBLE  = 950;  // a second dash chained right after the first ("double dash") tops out
+                                   // at today's current top speed
+const DASH_BOOST_DURATION = 0.5; // how long the elevated speed ceiling lingers after a double-dash
+                                   // before settling back down to the new normal cap
+const MAX_AIR_JUMPS      = 1;    // the "double" in double jump — one extra jump while airborne
+const DIVE_SPEED          = 1100; // a hard downward burst — exceeds the normal cap, like a dash does
+const DIVE_BOSS_MIN_IMPACT = 300; // how hard the dive has to land on the boss to actually hurt it
+
+const DEBRIS_DAMPING    = 0.998;
+const DEBRIS_FLOOR_FRICTION = 800; // extra tangential friction once debris is actually resting against
+                                     // a wall — without this, residual drift never fully stops and items
+                                     // slide all the way into corners over time
+const SLAM_KICK         = 480;  // debris kick — keep this punchy, it's meant to send ammo flying toward the new floor
+const PLAYER_SLAM_KICK  = 200;  // a much gentler kick for the player specifically — getting yeeted across
+                                  // the arena right as the punish-window opens is most of why hits felt impossible
+const SLAM_HITSTOP      = 0.1;  // brief near-freeze on slam impact: reads as a real hit, and buys a beat to react
+const FALL_DAMAGE_DISTANCE = 240; // how far you must fall toward the current floor before landing hurts
+const MIN_HIT_SPEED     = 260;
+const PULSE_DURATION    = 1.1;
+const PULSE_COOLDOWN    = 3.4;
+const BOSS_WANDER_SPEED   = 90;  // idle drifting pace while it's just watching
+const BOSS_APPROACH_SPEED = 260; // how fast it travels to the wall it's about to work on
+const PUSH_DURATION       = 0.5; // how long the push/pull animation takes before the flip actually lands
+const BOSS_TURN_DURATION  = 0.6; // how long the arena visibly takes to turn once the boss commits — a real
+                                   // turn, not a snap, since the boss is physically muscling the wall around
+const VULNERABLE_DURATION = 3.2; // was 2.4 — too tight to actually capitalize on once you account for recovery
+const BOSS_MAX_HP       = 5;
+const PLAYER_MAX_HP     = 4;
+const INVULN_TIME       = 0.7;
+const PLAYER_SPRITE_HEIGHT = 56; // display height in px; width follows the source image's own aspect ratio
+const MANDRAKE_DISPLAY_HEIGHT = 52; // display height for the FULL mandrake sprite; the leaf crop scales with it
+const CRY_DURATION  = 1.6;  // how long the crying flipbook plays once a pull reveals a scream — stretched out
+                              // on purpose so the 2-frame animation actually has time to read
+const CRY_FRAME_TIME = 0.25; // seconds per frame of the cry flipbook
+
+// ---------- boss: grabbing/throwing items at you ----------
+const BOSS_SEEK_SPEED          = 220;  // travel speed when going to grab a loose item
+const BOSS_SEEK_MAX_RANGE      = 320;  // won't trek across the whole arena for one box
+const BOSS_WINDUP_DURATION     = 0.6;  // holding the item, about to release — also the high-dodge-chance window
+const BOSS_THROW_SPEED_MIN     = 360;
+const BOSS_THROW_SPEED_MAX     = 560;
+const BOSS_THROW_SPREAD        = 0.3;  // radians of random aim error thrown onto every release — it's not a sniper
+const BOSS_ATTACK_COOLDOWN_MIN = 4.5;  // gap between throw attempts, so it's a threat, not a barrage
+const BOSS_ATTACK_COOLDOWN_MAX = 8;
+const BOSS_STRONG_THROW_CHANCE = 0.35; // how often a boss throw rolls "strong" instead of "weak"
+const BOSS_STRONG_SPEED_MULT   = 1.3;  // strong throws hit harder and are tougher to catch
+const BOSS_WEAK_SPEED_MULT     = 0.85; // weak throws are gentler and easier to catch
+
+// ---------- boss: catching YOUR throws and hurling them back ----------
+const BOSS_CATCH_CHANCE_WINDUP = 0.55; // about to throw (the red windup ring) — most alert, most likely to snag it
+const BOSS_CATCH_CHANCE_BASE   = 0.12;
+const BOSS_CATCH_CHANCE_LOW    = 0.04; // mid-slam-routine — still busy, rarely free to catch
+const BOSS_CATCH_WINDUP_DURATION = 0.35; // a quick reflex throw-back, faster than a normal windup
+const BOSS_CATCH_SPREAD_MULT   = 0.35; // tighter aim right after catching something
+
+// ---------- you: catching a thrown-at-you item instead of eating it ----------
+const PLAYER_CATCH_CHANCE_WEAK   = 0.85; // was 0.65 — raised since a catch now also requires timing E correctly
+const PLAYER_CATCH_CHANCE_STRONG = 0.4;  // was 0.2
+const KNOCKBACK_STRENGTH = 260; // velocity impulse applied to you when a strong throw connects
+const PLAYER_KICK_CHANCE_WEAK   = 0.3;  // if a catch doesn't happen, this is the next thing tried
+const PLAYER_KICK_CHANCE_STRONG = 0.15;
+const KICK_SPEED_MULT = 0.55; // a kicked item flies at the boss, but "not necessarily as powerful" —
+                                // roughly half the speed it came in at
+const KICK_SPREAD = 0.25; // a little inaccuracy on the redirect — it's a reflex, not a careful aim
+
+// ---------- bullet patterns ----------
+const BULLET_RADIUS       = 7;
+const BULLET_SPEED_BASE   = 220;
+const BULLET_LIFETIME     = 7;
+const BULLET_DAMAGE_METER = 6;
+const BARRAGE_TELEGRAPH_DURATION = 0.8;  // a longer wind-up so you know something big is starting
+const BARRAGE_COOLDOWN_MIN = 18, BARRAGE_COOLDOWN_MAX = 28; // rarer but feels like an event when it happens
+const BARRAGE_PHASE_DURATION = 40;       // base seconds — scales up with aggression, so 40-60s range
+const BARRAGE_ORBIT_SPEED = 160;         // how fast the boss drifts around the arena during the phase
+const BARRAGE_ORBIT_TURN_RATE = 1.4;     // radians/sec the orbit direction wiggles (makes it feel alive)
+const BARRAGE_PAUSE_BETWEEN = 0.55;      // beat of silence between sub-patterns — reads as breathing
+// sub-pattern tuning
+const SPIRAL_STEP_TIME  = 0.055;
+const SPIRAL_DURATION   = 3.2;           // longer spiral — gives the pattern room to develop
+const SPIRAL_SPIN_SPEED = 3.1;
+const RADIAL_COUNT_BASE = 12;            // spokes in a burst
+const FAN_VOLLEY_COUNT  = 5;             // volleys per aimed fan sequence
+const FAN_VOLLEY_GAP    = 0.28;
+const RING_RING_GAP     = 0.55;          // gap between concentric ring pulses
+const RING_RING_COUNT   = 4;             // how many concentric rings fire in one sequence
+
+// ---------- you: dodge button (Q) ----------
+const DODGE_IFRAME_DURATION = 0.28;
+const DODGE_COOLDOWN = 1.3;  // was 2.6 — needs to be usable during bullet phases
+const DODGE_BURST_SPEED = 500;
+
+// ---------- counter-magic ----------
+const MAGIC_ABSORB_RANGE  = 52;   // radius of the catch field while E is held
+const MAGIC_ABSORB_WINDOW = 0.4;  // how long the field stays open on each E-press
+const MAGIC_MAX_STORED    = 4;    // bullet cap — full charge = 4 absorbed
+const MAGIC_BOLT_SPEED    = 290;  // slower than normal bullets so you can track it
+const MAGIC_BOLT_LIFETIME = 5;
+const MAGIC_BOLT_HOME     = 200;  // lateral pull toward the boss per second (gentle homing)
+const MAGIC_COOLDOWN      = 3.5;  // post-fire lockout
+const MAGIC_DECAY_RATE    = 5;    // stored bullets drain at this rate (per sec) if never fired
+
+const ITEM_DURABILITY_MIN = 2;
+const ITEM_DURABILITY_MAX = 5; // randomized per item so they don't all wear out at the same rate
+const DESTROY_FX_DURATION = 0.3; // little burst-and-vanish when something finally breaks
+function randomDurability(){ return ITEM_DURABILITY_MIN + Math.floor(Math.random()*(ITEM_DURABILITY_MAX-ITEM_DURABILITY_MIN+1)); }
+
+// ---------- boss: dodging your throws ----------
+const BOSS_DODGE_THREAT_SPEED = 220; // how fast something needs to be moving to register as a threat at all
+const BOSS_DODGE_RANGE        = 240; // how close a threat needs to be to trigger a dodge check
+const BOSS_DODGE_CHANCE_BASE  = 0.45; // baseline odds (idle, or recovering once the turn itself has settled)
+const BOSS_DODGE_CHANCE_LOW   = 0.12; // mid-slam-routine (approach/pushing/turning) — busy, harder to react
+const BOSS_DODGE_CHANCE_HIGH  = 0.8;  // about to throw — alert and ready to bail, but it'll drop its ammo to do it
+const BOSS_DODGE_DISTANCE     = 80;
+const BOSS_DODGE_SPEED        = 700;
+const BOSS_DODGE_DURATION     = 0.3;
+const BOSS_DODGE_COOLDOWN     = 0.6; // can't dodge back-to-back instantly
+
+// ---------- pickup / pull / throw ----------
+const INTERACT_RANGE    = 44;  // how close you need to be to grab or start pulling something
+const PULL_DURATION     = 1.5; // seconds of holding E to fully extract a mandrake
+const SCREAM_CHANCE     = 0.35;// hidden odds a given mandrake screams on extraction — no tell beforehand
+const STUN_DURATION     = 0.45;// how long a scream locks you out of acting
+const THROW_SPEED_MIN   = 380; // a quick tap-release throw (used for down, and the horizontal part of left/right)
+const THROW_SPEED_MAX   = 760; // fully charged throw
+const THROW_SPEED_UP_MIN = 700;  // straight-up throws need much more power to fight gravity the whole climb
+const THROW_SPEED_UP_MAX = 1150; // tuned so a full charge can actually clear the distance to the boss, with margin
+const THROW_ARC_BIAS    = 0.6; // was 0.4 — left/right throws get this fraction of their speed redirected upward, for a more visible lob arc
+const MAX_CHARGE_TIME   = 0.9; // seconds held to reach full charge
+
+// ---------- world ----------
+// Square, not a rectangle — a rectangle's footprint changes shape when rotated 90°
+// (an 820x480 room rotated a quarter-turn needs 480 wide x 820 tall of space, which
+// doesn't fit on a fixed canvas). A square's footprint is identical at every 90° snap.
+// Sized for the WORST case, which is actually mid-tween at 45° between two snapped
+// orientations — a square's bounding box there is side*sqrt(2), so we size down from
+// the canvas accordingly, leaving margin for screen-shake too.
+const ARENA_SIZE = 500;
+const ARENA = { w: ARENA_SIZE, h: ARENA_SIZE };
+
+const DIRS = {
+  down:  {x:0,y:1},
+  up:    {x:0,y:-1},
+  left:  {x:-1,y:0},
+  right: {x:1,y:0}
+};
+const DIR_NAMES = Object.keys(DIRS);
+// Screen rotation (degrees) that makes each direction render as "down" on screen.
+const ANGLE_FOR_DIR = { down:0, right:90, up:180, left:270 };
+const WORLD_TWEEN_RATE = 9; // how fast the world chases worldAngleTarget when NOT a hard slam-snap
+
+function rotateVec(v, deg){
+  const r = deg*Math.PI/180, c=Math.cos(r), s=Math.sin(r);
+  return { x: v.x*c - v.y*s, y: v.x*s + v.y*c };
+}
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+// pick the equivalent of `target` (mod 360) closest to `current`, so tweening takes the short way around
+function nearestEquivalentAngle(target, current){
+  let t = target;
+  while (t - current > 180) t -= 360;
+  while (t - current < -180) t += 360;
+  return t;
+}
+function groundWallName(g){
+  if (g.x===0 && g.y===1) return 'down';
+  if (g.x===0 && g.y===-1) return 'up';
+  if (g.x===1 && g.y===0) return 'right';
+  if (g.x===-1&& g.y===0) return 'left';
+}
+
+// The player's WASD/arrow aim keys express a SCREEN-relative intention — "throw toward
+// the top of the screen" — not an arena-absolute one. The camera rotates so whatever's
+// currently acting as gravity renders as screen-down, so "screen-relative" has to be
+// resolved against CURRENT gravity, not against a fixed arena axis. This does that
+// conversion with plain swap+negate (the exact same 90°-rotation math the movement
+// code already uses for its floor-tangent), never trig, so there's zero drift to break
+// the exact equality checks (groundWallName, DIRS lookups) elsewhere.
+function screenAxes(g){
+  return {
+    down:  { x: g.x,  y: g.y },
+    up:    { x: -g.x, y: -g.y },
+    right: { x: g.y,  y: -g.x },
+    left:  { x: -g.y, y: g.x }
+  };
+}
+
+// ---------- entities ----------
+let player, boss, items, baseGravity, baseGravityName, pulse, meter, game, shake, aimDir, keys, pulseRequested;
+let elapsed = 0; // running clock, used for ambient flashing/animation timing (slows along with hitStop, which is fine)
+let bossTurn = { active:false, t:0, duration:0.6, from:0, to:0 }; // the eased "box turning" animation for boss-triggered flips
+let dashRequested = false;
+let diveRequested = false;
+let dodgeRequested = false;
+let bullets = [];
+let magicBolts = [];
+let dodgeTrail = []; // afterimage ghosts left behind during a dodge
+let wallSlotRegrow = {}; // wallSide -> remaining time, only present while that slot is empty
+let worldAngle, worldAngleTarget;
+let interactRequested = false;
+let throwReleaseRequested = false;
+let chargeEligible = false; // true only if THIS E-press started while already holding something
+let aimStack = []; // direction keys in press order, most-recent last — fixes aim getting "stuck"
+// These labels are SCREEN-relative ("aim toward the top of the screen"), not arena-absolute.
+// screenAxes() resolves them against whatever's currently acting as gravity at the moment
+// they're used (pulse fire, throw release, held-item offset) — never store an arena name here.
+const AIM_KEY_DIR = { ArrowUp:'up', KeyW:'up', ArrowDown:'down', KeyS:'down', ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right' };
+
+function makeBox(xFrac){
+  return { kind:'box', state:'loose', x:ARENA.w*xFrac, y:ARENA.h-40, vx:0, vy:0, radius:16, hitCooldown:0, rotation:0, usesLeft:randomDurability() };
+}
+const WALL_GROW_DIR = { bottom:{x:0,y:-1}, top:{x:0,y:1}, left:{x:1,y:0}, right:{x:-1,y:0} };
+function makeMandrake(x, y, wallSide, growing, slotId){
+  return { kind:'mandrake', state:'rooted', x, y, vx:0, vy:0, radius:14, wallSide, slotId:slotId||null,
+           growDir: WALL_GROW_DIR[wallSide], hitCooldown:0, pullProgress:0, willScream:false, cryTimer:0,
+           hasCried:false, flip: Math.random()<0.5 ? 1 : -1, usesLeft:randomDurability(),
+           growProgress: growing ? 0 : 1 };
+}
+// A plain root — rooted and pullable just like a mandrake, but no scream/cry roulette: pulling
+// one always succeeds cleanly. Visually identical while still rooted (the leaf crop is the same
+// either way), so you genuinely can't tell which you're getting until it's out of the ground.
+function makeRoot(x, y, wallSide, growing, slotId){
+  return { kind:'root', state:'rooted', x, y, vx:0, vy:0, radius:14, wallSide, slotId:slotId||null,
+           growDir: WALL_GROW_DIR[wallSide], hitCooldown:0, pullProgress:0, willScream:false,
+           flip: Math.random()<0.5 ? 1 : -1, usesLeft:randomDurability(),
+           growProgress: growing ? 0 : 1 };
+}
+function makeWallPlant(slot, growing){
+  return Math.random()<0.5 ? makeMandrake(slot.x, slot.y, slot.side, growing, slot.id)
+                            : makeRoot(slot.x, slot.y, slot.side, growing, slot.id);
+}
+// All fixed plant slots — 2 per wall, 8 total. Keys are slot.id, used by wallSlotRegrow
+// and each plant's own .slotId field so regrowth knows exactly where to put the new one.
+const WALL_SLOTS = [
+  {id:'bottom_0', side:'bottom', x:ARENA.w*0.28, y:ARENA.h-26},
+  {id:'bottom_1', side:'bottom', x:ARENA.w*0.65, y:ARENA.h-26},
+  {id:'top_0',    side:'top',    x:ARENA.w*0.35, y:26},
+  {id:'top_1',    side:'top',    x:ARENA.w*0.72, y:26},
+  {id:'left_0',   side:'left',   x:26,            y:ARENA.h*0.30},
+  {id:'left_1',   side:'left',   x:26,            y:ARENA.h*0.68},
+  {id:'right_0',  side:'right',  x:ARENA.w-26,    y:ARENA.h*0.32},
+  {id:'right_1',  side:'right',  x:ARENA.w-26,    y:ARENA.h*0.70},
+];
+const REGROW_TIME_MIN = 14, REGROW_TIME_MAX = 26;
+const GROW_IN_DURATION = 0.6;
+
+function updateRegrowth(dt){
+  for (const slotId in wallSlotRegrow){
+    wallSlotRegrow[slotId] -= dt;
+    if (wallSlotRegrow[slotId] <= 0){
+      const slot = WALL_SLOTS.find(s => s.id === slotId);
+      if (slot) items.push(makeWallPlant(slot, true));
+      delete wallSlotRegrow[slotId];
+    }
+  }
+}
+
+function resetGame(){
+  player = { x: ARENA.w/2, y: ARENA.h-40, vx:0, vy:0, radius:14, hp:PLAYER_MAX_HP, invuln:0,
+             fallDist:0, fallResistance:0, holding:null, pulling:null, stun:0,
+             throwCharge:0, throwCharging:false, facing:1,
+             dashCharges:DASH_CHARGES_MAX, dashBoostTimer:0,
+             airJumpsUsed:0, diving:false, dodgeCooldown:0, dodgeIframe:0,
+             magicStored:0, magicAbsorbTimer:0, magicCooldown:0 };
+  boss   = { pos:{x:ARENA.w/2, y:ARENA.h*0.4}, radius:36, hp:BOSS_MAX_HP, vulnerable:false, hitFlash:0,
+             wanderTarget:{x:ARENA.w/2, y:ARENA.h*0.4}, wanderTimer:1.2,
+             action:'idle', holding:null, seekTarget:null, windupTimer:0, attackCooldown:2.5, justCaught:false,
+             dodgeCooldown:0, dodgeTimer:0, dodgeTarget:null, dodgeFrom:null, lastDodgedThreat:null,
+             barrageCooldown: 5+Math.random()*4, barrageTelegraphTimer:0, barragePhase:null };
+  // Rooted plants can't move when gravity flips (only loose items can), so they're
+  // useless if they all sit on one wall — one per wall means there's always something
+  // within reach of whichever side is currently the floor. Each is randomly a mandrake
+  // or a plain root — no way to tell which until you've pulled it. Boxes are sitting this
+  // one out for now (still fully working in code, just not spawned).
+  items = WALL_SLOTS.map(slot => makeWallPlant(slot, false));
+  baseGravity = {...DIRS.down};
+  baseGravityName = 'down';
+  pulse = { active:false, timer:0, cooldown:0, dir:{...DIRS.down}, dirName:'down' };
+  meter = 50; // 0 = boss total control, 100 = player total control
+  game = { phase:'calm', phaseTimer: 3.0, slamDirName:'down', lastSlamDirName:'down', pushOrPull:'push', wallSpotFrac:0.5, result:null };
+  shake = { mag:0, rotMag:0, timer:0 };
+  worldAngle = 0; worldAngleTarget = 0;
+  bossTurn.active = false;
+  elapsed = 0;
+  aimDir = 'up';
+  keys = {};
+  pulseRequested = false;
+  interactRequested = false;
+  throwReleaseRequested = false; chargeEligible = false;
+  if (player) player.magicFireRequested = false;
+  aimStack = [];
+  dashRequested = false;
+  diveRequested = false;
+  wallSlotRegrow = {};
+  bullets = [];
+  magicBolts = [];
+  dodgeTrail = [];
+  if (typeof boss !== 'undefined') boss.barragePhase = null;
+}
+resetGame();
+
+let lastTapTime = {}; // for double-tap detection (dash on A/D, dive on ArrowDown)
+const DOUBLE_TAP_WINDOW = 0.3;
+function isDoubleTap(code){
+  const now = performance.now()/1000;
+  const last = lastTapTime[code] || -99;
+  lastTapTime[code] = now;
+  return (now-last) < DOUBLE_TAP_WINDOW;
+}
+
+window.addEventListener('keydown', e=>{
+  const codes = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space','KeyA','KeyD','KeyW','KeyS','KeyR','KeyE','ShiftLeft','ShiftRight'];
+  if (codes.includes(e.code)) e.preventDefault();
+  if (e.repeat) return; // everything below only matters on the initial press
+  keys[e.code]=true;
+
+  const dir = AIM_KEY_DIR[e.code];
+  if (dir){
+    if (!aimStack.includes(e.code)) aimStack.push(e.code);
+    aimDir = AIM_KEY_DIR[aimStack[aimStack.length-1]];
+  }
+  if (e.code==='ShiftLeft'||e.code==='ShiftRight') pulseRequested = true;
+  if (e.code==='KeyE'){
+    chargeEligible = !!(player && player.holding); // a fresh press while already holding = a throw-charge press
+    if (!chargeEligible) interactRequested = true;  // otherwise it's a grab / pull-start press
+  }
+  if (e.code==='KeyA' || e.code==='KeyD'){
+    if (isDoubleTap(e.code)) dashRequested = true; // a quick double-tap is a dash, same as Ctrl
+  }
+  if (e.code==='KeyS'){
+    if (isDoubleTap(e.code)) diveRequested = true;
+  }
+  if (e.code==='KeyQ') dodgeRequested = true;
+  if (e.code==='KeyR') resetGame();
+});
+window.addEventListener('keyup', e=>{
+  keys[e.code]=false;
+  if (AIM_KEY_DIR[e.code]){
+    aimStack = aimStack.filter(c => c !== e.code);
+    if (aimStack.length) aimDir = AIM_KEY_DIR[aimStack[aimStack.length-1]];
+    // if the stack is now empty, aimDir simply keeps its last value — no snap-back to a default
+  }
+  if (e.code==='KeyE'){
+    if (chargeEligible && player && player.holding) throwReleaseRequested = true;
+    else if (player && !player.holding && player.magicStored >= 1 && player.magicCooldown <= 0) player.magicFireRequested = true;
+    chargeEligible = false;
+  }
+});
+let jumpRequested=false;
+window.addEventListener('keydown', e=>{ if (e.code==='Space'||e.code==='KeyW') jumpRequested=true; });
+window.addEventListener('keydown', e=>{
+  if (e.code==='ControlLeft'||e.code==='ControlRight'){
+    if (e.repeat) return;
+    e.preventDefault();
+    dashRequested = true;
+  }
+});
+
+function effectiveGravity(){ return pulse.active ? pulse.dir : baseGravity; }
+
+function pickSlamDir(exclude){
+  const choices = DIR_NAMES.filter(n=>n!==exclude);
+  // "Smart" targeting: most of the time, go after whichever wall the player is currently
+  // closest to — reads as the boss reacting to where you are, not picking blind. Still
+  // randomizes some of the time so it can't be reliably baited/countered.
+  if (Math.random() < 0.7){
+    const distToWall = {
+      down:  ARENA.h - player.y,
+      up:    player.y,
+      right: ARENA.w - player.x,
+      left:  player.x
+    };
+    let best = choices[0];
+    for (const c of choices) if (distToWall[c] < distToWall[best]) best = c;
+    return best;
+  }
+  return choices[Math.floor(Math.random()*choices.length)];
+}
+
+function triggerShake(mag, time, rotMag){ shake.mag = mag; shake.rotMag = rotMag||0; shake.timer = time; }
+
+let hitStop = 0; // counts down in real time; while >0 the main loop feeds update() a tiny dt instead of a real one
+
+function executeSlam(){
+  const dir = DIRS[game.slamDirName];
+  baseGravity = {...dir};
+  baseGravityName = game.slamDirName;
+  player.vx += dir.x*PLAYER_SLAM_KICK; player.vy += dir.y*PLAYER_SLAM_KICK;
+  for (const it of items){ if (it.state==='loose'){ it.vx += dir.x*SLAM_KICK*0.85; it.vy += dir.y*SLAM_KICK*0.85; } }
+  meter = clamp(meter-15, 0, 100);
+  // the world visibly TURNS into the new orientation rather than snapping — the boss just
+  // physically muscled a wall around, so the room turning with it should read as one motion
+  bossTurn = { active:true, t:0, duration:BOSS_TURN_DURATION,
+               from: worldAngle, to: nearestEquivalentAngle(ANGLE_FOR_DIR[game.slamDirName], worldAngle) };
+  hitStop = SLAM_HITSTOP; // a beat of near-freeze right on impact, before the vulnerable window starts ticking
+  triggerShake(16, 0.4, 7);
+}
+
+// ---------- physics ----------
+function applyGravity(body, g, dt, damp, maxSpeed){
+  body.vx += g.x*GRAVITY_ACCEL*dt;
+  body.vy += g.y*GRAVITY_ACCEL*dt;
+  body.vx *= damp; body.vy *= damp;
+  const cap = maxSpeed || MAX_SPEED;
+  const speed = Math.hypot(body.vx, body.vy);
+  if (speed > cap){ body.vx *= cap/speed; body.vy *= cap/speed; }
+  body.x += body.vx*dt;
+  body.y += body.vy*dt;
+}
+
+function resolveBounds(body, restitution, floorSide){
+  let floorImpact = 0;
+  if (body.x-body.radius<0){ body.x=body.radius; if(body.vx<0){ if(floorSide==='left') floorImpact=Math.max(floorImpact,-body.vx); body.vx*=-restitution; } }
+  if (body.x+body.radius>ARENA.w){ body.x=ARENA.w-body.radius; if(body.vx>0){ if(floorSide==='right') floorImpact=Math.max(floorImpact,body.vx); body.vx*=-restitution; } }
+  if (body.y-body.radius<0){ body.y=body.radius; if(body.vy<0){ if(floorSide==='up') floorImpact=Math.max(floorImpact,-body.vy); body.vy*=-restitution; } }
+  if (body.y+body.radius>ARENA.h){ body.y=ARENA.h-body.radius; if(body.vy>0){ if(floorSide==='down') floorImpact=Math.max(floorImpact,body.vy); body.vy*=-restitution; } }
+  return floorImpact;
+}
+
+// Debris was sliding along whatever wall currently acts as the floor until it piled into a
+// corner, because general DEBRIS_DAMPING decays velocity far too slowly to ever actually stop
+// it mid-wall. This adds real friction — but only to the tangential (along-the-floor)
+// component, and only while actually resting against that floor — same trick updatePlayer
+// already uses to get a crisp stop without touching how falling/bouncing feels.
+function applyDebrisFriction(it, g, dt){
+  const gw = groundWallName(g);
+  let grounded = false;
+  if (gw==='down')  grounded = it.y+it.radius >= ARENA.h-3;
+  if (gw==='up')    grounded = it.y-it.radius <= 3;
+  if (gw==='right') grounded = it.x+it.radius >= ARENA.w-3;
+  if (gw==='left')  grounded = it.x-it.radius <= 3;
+  if (!grounded) return;
+  const tangent = screenAxes(g).right;
+  const tComp = it.vx*tangent.x + it.vy*tangent.y;
+  const nComp = it.vx*g.x + it.vy*g.y;
+  const decel = DEBRIS_FLOOR_FRICTION*dt;
+  let newT = tComp;
+  if (Math.abs(tComp) <= decel) newT = 0; else newT -= Math.sign(tComp)*decel;
+  it.vx = tangent.x*newT + g.x*nComp;
+  it.vy = tangent.y*newT + g.y*nComp;
+}
+
+// Every throw — yours or the boss's — wears an item down.
+function consumeItemUse(it){
+  if (it.usesLeft != null) it.usesLeft -= 1;
+}
+// Called right after an item lands a hit — if that was its last use, it shatters NOW,
+// after actually connecting, rather than vanishing before it ever got the chance to.
+function breakIfSpent(it){
+  if (it.usesLeft != null && it.usesLeft <= 0 && it.state !== 'destroyed'){
+    it.state = 'destroyed';
+    it.destroyTimer = DESTROY_FX_DURATION;
+    it.vx = 0; it.vy = 0;
+  }
+}
+
+function resolveCore(chunk){
+  const dx = chunk.x-boss.pos.x, dy = chunk.y-boss.pos.y;
+  const dist = Math.hypot(dx,dy);
+  const minDist = chunk.radius+boss.radius;
+  if (dist < minDist && dist > 0.001){
+    const nx=dx/dist, ny=dy/dist;
+    chunk.x = boss.pos.x+nx*minDist; chunk.y = boss.pos.y+ny*minDist;
+    const vDotN = chunk.vx*nx + chunk.vy*ny;
+    chunk.vx -= 1.6*vDotN*nx; chunk.vy -= 1.6*vDotN*ny;
+    return Math.abs(vDotN);
+  }
+  return 0;
+}
+
+// Same shape as resolveCore, but against the player — only matters for boss-thrown items
+// (see the it.fromBoss check at the call site); neutral boxes/mandrakes still pass through
+// you untouched, same as before, so existing pickup feel doesn't change.
+function resolvePlayerHit(chunk){
+  const dx = chunk.x-player.x, dy = chunk.y-player.y;
+  const dist = Math.hypot(dx,dy);
+  const minDist = chunk.radius+player.radius;
+  if (dist < minDist && dist > 0.001){
+    const nx=dx/dist, ny=dy/dist;
+    chunk.x = player.x+nx*minDist; chunk.y = player.y+ny*minDist;
+    const vDotN = chunk.vx*nx + chunk.vy*ny;
+    chunk.vx -= 1.6*vDotN*nx; chunk.vy -= 1.6*vDotN*ny;
+    return Math.abs(vDotN);
+  }
+  return 0;
+}
+
+// Solid body-to-body collision — neither of you can occupy the same space. The boss's own
+// position is authoritatively set by its AI every frame, so only the player gets pushed
+// out here (pushing the boss too would just get overwritten by its own movement code).
+function resolvePlayerBossCollision(){
+  const dx = player.x-boss.pos.x, dy = player.y-boss.pos.y;
+  const dist = Math.hypot(dx,dy);
+  const minDist = player.radius+boss.radius;
+  if (dist < minDist && dist > 0.001){
+    const nx=dx/dist, ny=dy/dist;
+    player.x = boss.pos.x+nx*minDist; player.y = boss.pos.y+ny*minDist;
+    const vDotN = player.vx*nx + player.vy*ny;
+    if (vDotN < 0){ player.vx -= vDotN*nx; player.vy -= vDotN*ny; } // stop sinking in, don't bounce away hard
+    return Math.abs(vDotN);
+  }
+  return 0;
+}
+
+// ---------- boss movement ----------
+// Resting point near a wall while the boss pushes/pulls on it (inset so it doesn't clip into the wall).
+// frac (0..1) is where ALONG the wall it lands — randomized per attempt, not always dead-center.
+function wallApproachPoint(wallName, frac){
+  const m = boss.radius + 44;
+  if (wallName==='down')  return { x: ARENA.w*frac, y: ARENA.h-m };
+  if (wallName==='up')    return { x: ARENA.w*frac, y: m };
+  if (wallName==='right') return { x: ARENA.w-m, y: ARENA.h*frac };
+  if (wallName==='left')  return { x: m,         y: ARENA.h*frac };
+}
+// The actual wall surface at that same spot, for the push/pull tether line to reach
+function wallSurfacePoint(wallName, frac){
+  if (wallName==='down')  return { x: ARENA.w*frac, y: ARENA.h };
+  if (wallName==='up')    return { x: ARENA.w*frac, y: 0 };
+  if (wallName==='right') return { x: ARENA.w,   y: ARENA.h*frac };
+  if (wallName==='left')  return { x: 0,         y: ARENA.h*frac };
+}
+// 0..1 inset from the corners so the push/pull animation always has room to play out
+function pickWallSpot(){ return 0.18 + Math.random()*0.64; }
+function pickWanderTarget(){
+  // most of the arena, not just a tight central box — it should feel like it can be anywhere
+  return { x: ARENA.w*(0.18+Math.random()*0.64), y: ARENA.h*(0.18+Math.random()*0.64) };
+}
+function stepToward(pos, target, speed, dt){
+  const dx=target.x-pos.x, dy=target.y-pos.y, dist=Math.hypot(dx,dy);
+  if (dist<0.5) return true; // arrived
+  const step = Math.min(dist, speed*dt);
+  pos.x += dx/dist*step; pos.y += dy/dist*step;
+  return step>=dist;
+}
+function updateBossWander(dt){
+  boss.wanderTimer -= dt;
+  const arrived = stepToward(boss.pos, boss.wanderTarget, BOSS_WANDER_SPEED, dt);
+  if (boss.wanderTimer<=0 || arrived){
+    boss.wanderTarget = pickWanderTarget();
+    boss.wanderTimer = 2 + Math.random()*2.5;
+  }
+}
+function updateBossApproach(dt){
+  const target = wallApproachPoint(game.slamDirName, game.wallSpotFrac);
+  if (stepToward(boss.pos, target, BOSS_APPROACH_SPEED, dt)){
+    game.phase = 'pushing';
+    game.phaseTimer = PUSH_DURATION;
+  }
+}
+function updateBossPush(){
+  // purely visual: re-derive position from the anchor each frame, no drift accumulation.
+  // "push" lunges the boss into the wall and back; "pull" holds still and lets the
+  // tether line (drawn separately) sell the tugging motion instead.
+  const t = clamp(1 - game.phaseTimer/PUSH_DURATION, 0, 1);
+  const anchor = wallApproachPoint(game.slamDirName, game.wallSpotFrac);
+  if (game.pushOrPull === 'push'){
+    const wallDir = DIRS[game.slamDirName];
+    const bump = Math.sin(t*Math.PI) * 16; // out toward the wall, then settles back, peaking mid-action
+    boss.pos.x = anchor.x + wallDir.x*bump;
+    boss.pos.y = anchor.y + wallDir.y*bump;
+  } else {
+    boss.pos.x = anchor.x; boss.pos.y = anchor.y;
+  }
+}
+
+// ---------- boss: grabbing & throwing items ----------
+function findLooseItemForBoss(){
+  let best=null, bestScore=Infinity;
+  for (const it of items){
+    if (it.state !== 'loose') continue;
+    const distToBoss = Math.hypot(it.x-boss.pos.x, it.y-boss.pos.y);
+    if (distToBoss >= BOSS_SEEK_MAX_RANGE) continue;
+    const distToPlayer = Math.hypot(it.x-player.x, it.y-player.y);
+    // weighted toward items the player could otherwise grab themselves — denying your
+    // ammo reads as more deliberate than just picking whatever's nearest to itself
+    const score = distToBoss - distToPlayer*0.6;
+    if (score < bestScore){ bestScore = score; best = it; }
+  }
+  return best;
+}
+function bossThrowVelocityToward(target, fromPos, spreadOverride, speedMult){
+  const dx = target.x-fromPos.x, dy = target.y-fromPos.y;
+  const dist = Math.hypot(dx,dy) || 1;
+  const dirx = dx/dist, diry = dy/dist;
+  // inaccuracy: a random angular error on top of a random speed — it's aiming roughly
+  // at you, not sniping you, and gravity will pull the arc further off besides
+  const spread = (Math.random()-0.5)*2*(spreadOverride!=null ? spreadOverride : BOSS_THROW_SPREAD);
+  const cos=Math.cos(spread), sin=Math.sin(spread);
+  const rx = dirx*cos - diry*sin, ry = dirx*sin + diry*cos;
+  const speed = (BOSS_THROW_SPEED_MIN + Math.random()*(BOSS_THROW_SPEED_MAX-BOSS_THROW_SPEED_MIN)) * (speedMult||1);
+  return { x: rx*speed, y: ry*speed };
+}
+function updateBossSeekItem(dt){
+  const target = boss.seekTarget;
+  if (!target || target.state !== 'loose'){
+    // grabbed by the player, or otherwise gone — give up gracefully and try again later
+    boss.action = 'idle';
+    boss.attackCooldown = 1 + Math.random()*1.5;
+    return;
+  }
+  // resolveCore keeps every loose item at arm's length from the boss's own core (that's
+  // the mechanic that lets you damage it) — so it can never actually reach the item's
+  // exact center. "Arrived" has to mean "close enough to grab," checked before moving,
+  // or it'll just push the item ahead of itself forever and never catch up.
+  const grabRange = boss.radius + target.radius + 8;
+  const dx = target.x-boss.pos.x, dy = target.y-boss.pos.y;
+  if (Math.hypot(dx,dy) <= grabRange){
+    target.state = 'held';
+    boss.holding = target;
+    boss.action = 'windup';
+    boss.windupTimer = BOSS_WINDUP_DURATION;
+  } else {
+    stepToward(boss.pos, {x:target.x, y:target.y}, BOSS_SEEK_SPEED, dt);
+  }
+}
+function updateBossWindup(dt){
+  if (!boss.holding || boss.holding.state !== 'held'){
+    boss.holding = null; boss.action = 'idle'; boss.attackCooldown = 1.5; boss.justCaught = false; return;
+  }
+  boss.holding.x = boss.pos.x; boss.holding.y = boss.pos.y - boss.radius*0.7;
+  boss.holding.vx = 0; boss.holding.vy = 0;
+  boss.windupTimer -= dt;
+  if (boss.windupTimer <= 0){
+    const it = boss.holding;
+    const wasJustCaught = boss.justCaught;
+    boss.holding = null;
+    boss.action = 'idle';
+    boss.justCaught = false;
+    const aggression = 1 - clamp(boss.hp/BOSS_MAX_HP, 0, 1); // 0 at full hp, ->1 as it gets low
+    const cdMin = BOSS_ATTACK_COOLDOWN_MIN * (1 - aggression*0.4);
+    const cdMax = BOSS_ATTACK_COOLDOWN_MAX * (1 - aggression*0.4);
+    boss.attackCooldown = cdMin + Math.random()*(cdMax-cdMin);
+    consumeItemUse(it);
+    const spread = wasJustCaught ? BOSS_THROW_SPREAD*BOSS_CATCH_SPREAD_MULT : BOSS_THROW_SPREAD;
+    const isStrong = Math.random() < clamp(BOSS_STRONG_THROW_CHANCE + aggression*0.3, 0, 0.85);
+    const speedMult = isStrong ? BOSS_STRONG_SPEED_MULT : BOSS_WEAK_SPEED_MULT;
+    const vel = bossThrowVelocityToward(player, boss.pos, spread, speedMult);
+    it.state = 'loose';
+    it.x = boss.pos.x; it.y = boss.pos.y - boss.radius - it.radius;
+    it.vx = vel.x; it.vy = vel.y;
+    it.fromBoss = true;
+    it.throwStrength = isStrong ? 'strong' : 'weak';
+  }
+}
+
+// ---------- bullet patterns ----------
+// Bullets travel in straight lines, unaffected by gravity — bending them would make
+// patterns unreadable. World-rotation in render() handles displaying them correctly.
+function spawnBullet(x, y, vx, vy, color){
+  bullets.push({ x, y, vx, vy, radius:BULLET_RADIUS, color, life:BULLET_LIFETIME, spin:Math.random()*Math.PI*2 });
+}
+
+// ---- emitters ----
+function fireRadialBurst(count, speed, angleOffset){
+  const off = angleOffset||0;
+  for (let i=0;i<count;i++){
+    const a = (i/count)*Math.PI*2 + off;
+    spawnBullet(boss.pos.x, boss.pos.y, Math.cos(a)*speed, Math.sin(a)*speed, '#e8c468');
+  }
+}
+function fireSpiralStep(state){
+  const a = state.angle;
+  spawnBullet(boss.pos.x, boss.pos.y, Math.cos(a)*state.speed, Math.sin(a)*state.speed, '#c4477a');
+  spawnBullet(boss.pos.x, boss.pos.y, Math.cos(a+Math.PI)*state.speed, Math.sin(a+Math.PI)*state.speed, '#c4477a');
+  state.angle += SPIRAL_SPIN_SPEED*SPIRAL_STEP_TIME;
+}
+function fireAimedFan(count, spreadRad, speed){
+  const dx=player.x-boss.pos.x, dy=player.y-boss.pos.y;
+  const base=Math.atan2(dy,dx);
+  for (let i=0;i<count;i++){
+    const t = count===1?0:(i/(count-1)-0.5);
+    const a = base + t*spreadRad;
+    spawnBullet(boss.pos.x, boss.pos.y, Math.cos(a)*speed, Math.sin(a)*speed, '#9b6bd6');
+  }
+}
+function fireRingPulse(speed){ fireRadialBurst(16, speed, Math.random()*0.2); }
+
+// ---- sub-pattern sequence picker ----
+function pickSubPatterns(){
+  const pool = ['spiral','aimedFan','radialBurst','doubleSpiral','ringPulses','fanThenRing'];
+  const count = 3 + Math.floor(Math.random()*3);
+  const seq = [];
+  for (let i=0;i<count;i++){
+    let p = pool[Math.floor(Math.random()*pool.length)];
+    if (seq.length && seq[seq.length-1]===p) p = pool[Math.floor(Math.random()*pool.length)];
+    seq.push(p);
+  }
+  return seq;
+}
+
+// ---- barrage phase orchestrator ----
+function startBarragePhase(){
+  const aggression = 1 - clamp(boss.hp/BOSS_MAX_HP, 0, 1);
+  const speed = BULLET_SPEED_BASE * (1 + aggression*0.35);
+  boss.barragePhase = {
+    phaseTimer: BARRAGE_PHASE_DURATION * (1 + aggression*0.5), // 40s → ~60s as boss gets low
+    orbitAngle: Math.random()*Math.PI*2,
+    orbitDir: Math.random()<0.5?1:-1,
+    subQueue: pickSubPatterns(),
+    subState: null, pauseTimer: 0, speed
+  };
+  boss.action = 'barrage';
+  boss.vulnerable = true; // exposed for the whole phase — it's distracted, not shielded
+}
+
+function updateBarrageOrbit(dt){
+  const bp = boss.barragePhase;
+  bp.orbitAngle += bp.orbitDir * BARRAGE_ORBIT_TURN_RATE * dt;
+  const cx=ARENA.w/2, cy=ARENA.h*0.38, r=95;
+  stepToward(boss.pos, {x:cx+Math.cos(bp.orbitAngle)*r, y:cy+Math.sin(bp.orbitAngle)*r*0.65}, BARRAGE_ORBIT_SPEED, dt);
+}
+
+function startNextSubPattern(bp){
+  if (!bp.subQueue.length){ bp.subState=null; return; }
+  const name = bp.subQueue.shift();
+  const s = { name, timer:0, stepTimer:0, angle:Math.random()*Math.PI*2, speed:bp.speed };
+  if (name==='spiral')       s.timer = SPIRAL_DURATION;
+  if (name==='doubleSpiral') { s.timer=SPIRAL_DURATION*1.3; s.speed2=bp.speed*0.7; s.angle2=s.angle+Math.PI/4; }
+  if (name==='aimedFan')     { s.volleysLeft=FAN_VOLLEY_COUNT; s.gapTimer=0; }
+  if (name==='fanThenRing')  { s.volleysLeft=FAN_VOLLEY_COUNT; s.gapTimer=0; s.phase='fan'; }
+  if (name==='ringPulses')   { s.ringsLeft=RING_RING_COUNT; s.gapTimer=0; }
+  if (name==='radialBurst')  {
+    fireRadialBurst(RADIAL_COUNT_BASE+Math.round((1-clamp(boss.hp/BOSS_MAX_HP,0,1))*8), bp.speed, s.angle);
+    s.done=true;
+  }
+  bp.subState = s;
+}
+
+function tickSubPattern(bp, dt){
+  const s = bp.subState;
+  if (!s||s.done){ bp.pauseTimer=BARRAGE_PAUSE_BETWEEN; bp.subState=null; return; }
+  if (s.name==='spiral'||s.name==='doubleSpiral'){
+    s.timer-=dt; s.stepTimer-=dt;
+    if (s.stepTimer<=0){
+      fireSpiralStep(s);
+      if (s.name==='doubleSpiral'){ const s2={angle:s.angle2,speed:s.speed2}; fireSpiralStep(s2); s.angle2=s2.angle; }
+      s.stepTimer=SPIRAL_STEP_TIME;
+    }
+    if (s.timer<=0){ bp.pauseTimer=BARRAGE_PAUSE_BETWEEN; bp.subState=null; }
+  } else if (s.name==='aimedFan'){
+    s.gapTimer-=dt;
+    if (s.gapTimer<=0&&s.volleysLeft>0){ fireAimedFan(5,0.75,s.speed); s.volleysLeft--; s.gapTimer=FAN_VOLLEY_GAP; }
+    if (s.volleysLeft<=0&&s.gapTimer<=0){ bp.pauseTimer=BARRAGE_PAUSE_BETWEEN; bp.subState=null; }
+  } else if (s.name==='fanThenRing'){
+    if (s.phase==='fan'){
+      s.gapTimer-=dt;
+      if (s.gapTimer<=0&&s.volleysLeft>0){ fireAimedFan(4,0.6,s.speed*0.85); s.volleysLeft--; s.gapTimer=FAN_VOLLEY_GAP; }
+      if (s.volleysLeft<=0&&s.gapTimer<=0){ s.phase='ring'; s.ringsLeft=3; s.gapTimer=0.1; }
+    } else {
+      s.gapTimer-=dt;
+      if (s.gapTimer<=0&&s.ringsLeft>0){ fireRingPulse(s.speed*0.9); s.ringsLeft--; s.gapTimer=RING_RING_GAP; }
+      if (s.ringsLeft<=0&&s.gapTimer<=0){ bp.pauseTimer=BARRAGE_PAUSE_BETWEEN; bp.subState=null; }
+    }
+  } else if (s.name==='ringPulses'){
+    s.gapTimer-=dt;
+    if (s.gapTimer<=0&&s.ringsLeft>0){ fireRingPulse(s.speed); s.ringsLeft--; s.gapTimer=RING_RING_GAP; }
+    if (s.ringsLeft<=0&&s.gapTimer<=0){ bp.pauseTimer=BARRAGE_PAUSE_BETWEEN; bp.subState=null; }
+  }
+}
+
+function updateBarragePhase(dt){
+  const bp = boss.barragePhase;
+  if (!bp || bp.paused) return; // paused during a slam — don't tick timer or spawn bullets
+  bp.phaseTimer -= dt;
+  updateBarrageOrbit(dt);
+  if (bp.pauseTimer>0){ bp.pauseTimer-=dt; return; }
+  if (!bp.subState){
+    if (bp.phaseTimer<=0){
+      // time's up — let any active bullets finish naturally, then return to normal
+      boss.barragePhase=null; boss.action='idle'; boss.vulnerable=false;
+      const aggression=1-clamp(boss.hp/BOSS_MAX_HP,0,1);
+      boss.barrageCooldown=(BARRAGE_COOLDOWN_MIN*(1-aggression*0.3))+Math.random()*((BARRAGE_COOLDOWN_MAX-BARRAGE_COOLDOWN_MIN)*(1-aggression*0.3));
+      return;
+    }
+    // queue ran out but phase timer still has time — refill it and keep going
+    if (!bp.subQueue.length) bp.subQueue = pickSubPatterns();
+    startNextSubPattern(bp);
+  }
+  tickSubPattern(bp, dt);
+}
+
+function updateBullets(dt){
+  for (const b of bullets){
+    b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt; b.spin+=dt*4;
+    if (b.hit) continue;
+    if (player.invuln>0||player.dodgeIframe>0) continue;
+    const dist=Math.hypot(b.x-player.x,b.y-player.y);
+    if (dist<b.radius+player.radius){
+      b.hit=true; player.hp-=1; player.invuln=INVULN_TIME;
+      meter=clamp(meter-BULLET_DAMAGE_METER,0,100); triggerShake(8,0.2,3);
+      if (player.hp<=0) game.result='lost';
+    }
+  }
+  const m=60;
+  bullets=bullets.filter(b=>!b.hit&&b.life>0&&b.x>-m&&b.x<ARENA.w+m&&b.y>-m&&b.y<ARENA.h+m);
+}
+
+// ---------- boss: dodging incoming throws ----------
+// ---------- boss: dodging incoming throws ----------
+function findIncomingThreat(){
+  let best=null, bestT=Infinity;
+  for (const it of items){
+    if (it.state !== 'loose') continue;
+    const speed = Math.hypot(it.vx, it.vy);
+    if (speed < BOSS_DODGE_THREAT_SPEED) continue;
+    const dx = boss.pos.x-it.x, dy = boss.pos.y-it.y;
+    const dist = Math.hypot(dx,dy);
+    if (dist > BOSS_DODGE_RANGE || dist < 0.01) continue;
+    const closingSpeed = (it.vx*dx + it.vy*dy)/dist; // positive = actually heading toward the boss
+    if (closingSpeed < 80) continue;
+    const t = dist/closingSpeed;
+    if (t < bestT){ bestT = t; best = it; }
+  }
+  return best;
+}
+function updateBossThreatResponse(dt){
+  if (boss.dodgeCooldown>0) boss.dodgeCooldown -= dt;
+  if (boss.action === 'dodging'){
+    boss.dodgeTimer -= dt;
+    if (boss.dodgeTimer<=0) boss.action = 'idle';
+    return;
+  }
+  const threat = findIncomingThreat();
+  if (!threat){ boss.lastDodgedThreat = null; return; }
+  if (threat === boss.lastDodgedThreat) return; // already judged this exact threat instance
+  if (boss.dodgeCooldown>0){ boss.lastDodgedThreat = threat; return; }
+  boss.lastDodgedThreat = threat;
+
+  const busyWithSlam = game.phase==='approach' || game.phase==='pushing' || bossTurn.active;
+
+  // try to catch it first — same chance tiers as dodge (busy = unlikely, mid-windup = very
+  // likely, since "red and about to throw" is when it's most alert), and only ever ONE of
+  // catch-or-dodge happens for a given threat, never both
+  let catchChance = BOSS_CATCH_CHANCE_BASE;
+  if (busyWithSlam) catchChance = BOSS_CATCH_CHANCE_LOW;
+  else if (boss.action==='windup') catchChance = BOSS_CATCH_CHANCE_WINDUP;
+
+  if (Math.random() < catchChance){
+    if (boss.action==='windup' && boss.holding){
+      // can't hold two things — whatever it was about to throw gets dropped
+      boss.holding.state = 'loose';
+    }
+    threat.state = 'held';
+    threat.vx = 0; threat.vy = 0;
+    boss.holding = threat;
+    boss.action = 'windup';
+    boss.windupTimer = BOSS_CATCH_WINDUP_DURATION; // quick reflex throw-back, not a full windup
+    boss.justCaught = true;
+    boss.dodgeCooldown = BOSS_DODGE_COOLDOWN;
+    return;
+  }
+
+  let chance = BOSS_DODGE_CHANCE_BASE;
+  if (busyWithSlam) chance = BOSS_DODGE_CHANCE_LOW;
+  else if (boss.action==='windup') chance = BOSS_DODGE_CHANCE_HIGH;
+
+  if (Math.random() < chance){
+    if (boss.action==='windup' && boss.holding){
+      // can't throw and dodge at once — drop what it was about to throw
+      boss.holding.state = 'loose';
+      boss.holding = null;
+    }
+    const spd = Math.hypot(threat.vx, threat.vy) || 1;
+    const px = -threat.vy/spd, py = threat.vx/spd; // perpendicular to the incoming line
+    const side = Math.random()<0.5 ? 1 : -1;
+    boss.dodgeFrom = { x: boss.pos.x, y: boss.pos.y };
+    boss.dodgeTarget = {
+      x: clamp(boss.pos.x+px*side*BOSS_DODGE_DISTANCE, boss.radius+10, ARENA.w-boss.radius-10),
+      y: clamp(boss.pos.y+py*side*BOSS_DODGE_DISTANCE, boss.radius+10, ARENA.h-boss.radius-10)
+    };
+    boss.action = 'dodging';
+    boss.dodgeTimer = BOSS_DODGE_DURATION;
+    boss.dodgeCooldown = BOSS_DODGE_COOLDOWN;
+  }
+}
+
+// Orchestrates everything that moves boss.pos: dodging or mid-windup (whether from a normal
+// grab or from just catching something) both override whatever game.phase would otherwise
+// have it doing, since it can't do two things at once.
+function updateBoss(dt){
+  if (game.result) return;
+
+  // tick the barrage phase from any game.phase so orbit + bullet spawning continue across
+  // calm/approach/pushing/vulnerable — except when paused (slams pause it, resume on calm)
+  if (boss.barragePhase && boss.action === 'barrage') updateBarragePhase(dt);
+
+  updateBossThreatResponse(dt);
+
+  if (boss.action === 'dodging'){
+    stepToward(boss.pos, boss.dodgeTarget, BOSS_DODGE_SPEED, dt);
+    return;
+  }
+  if (boss.action === 'windup'){
+    updateBossWindup(dt);
+    return;
+  }
+
+  if (game.phase === 'calm'){
+    if (boss.action === 'idle'){
+      updateBossWander(dt);
+      boss.attackCooldown -= dt;
+      boss.barrageCooldown -= dt;
+      if (boss.barrageCooldown <= 0){
+        boss.action = 'barrageTelegraph';
+        boss.barrageTelegraphTimer = BARRAGE_TELEGRAPH_DURATION;
+      } else if (boss.attackCooldown <= 0){
+        const target = findLooseItemForBoss();
+        if (target){ boss.action = 'seekItem'; boss.seekTarget = target; }
+        else boss.attackCooldown = 1.5;
+      }
+    } else if (boss.action === 'seekItem'){
+      updateBossSeekItem(dt);
+    } else if (boss.action === 'barrageTelegraph'){
+      boss.barrageTelegraphTimer -= dt;
+      if (boss.barrageTelegraphTimer <= 0){
+        startBarragePhase();
+      }
+    } else if (boss.action === 'barrage'){
+      // handled at the top of updateBoss() so it runs across all game phases
+    }
+  } else if (game.phase === 'approach'){
+    updateBossApproach(dt);
+  } else if (game.phase === 'pushing'){
+    updateBossPush();
+  }
+  // 'vulnerable': boss holds its position, recovering — no movement
+}
+
+// ---------- phase / state machine ----------
+function updatePhase(dt){
+  if (game.result) return;
+  if (game.phase==='calm'){
+    game.phaseTimer -= dt;
+    if (game.phaseTimer<=0){
+      game.slamDirName = pickSlamDir(game.lastSlamDirName);
+      game.lastSlamDirName = game.slamDirName;
+      game.pushOrPull = Math.random()<0.5 ? 'push' : 'pull';
+      game.wallSpotFrac = pickWallSpot();
+      game.phase = 'approach';
+      // seekItem/barrageTelegraph aren't handled outside 'calm', abort them.
+      // A barrage in progress is deliberately allowed to survive a slam — bullets continuing
+      // to fly while the room rotates is more interesting than cutting them off, and
+      // updateBarragePhase is safe to call from any phase (orbit is a no-op when the boss
+      // is following wall-approach logic instead). Telegraph aborts since the slam itself is
+      // a more dramatic event that should take visual priority.
+      if (boss.action === 'seekItem' || boss.action === 'barrageTelegraph'){
+        boss.action = 'idle';
+      }
+      // if a barrage is active, pause it — slam takes full attention, bullets stop spawning
+      // but the barragePhase object is kept so it can resume once we're back in calm
+      if (boss.action === 'barrage'){
+        boss.barragePhase.paused = true;
+        boss.vulnerable = false; // no longer distracted, shield goes back up for the slam
+      }
+    }
+  } else if (game.phase==='approach'){
+    // movement + the approach->pushing transition itself live in updateBoss()
+    // resume a paused barrage once the slam routine finishes and we're back in calm
+  } else if (game.phase==='pushing'){
+    game.phaseTimer -= dt;
+    if (game.phaseTimer<=0){
+      executeSlam();
+      boss.vulnerable = true;
+      game.phase = 'vulnerable';
+      game.phaseTimer = VULNERABLE_DURATION;
+    }
+  } else if (game.phase==='vulnerable'){
+    game.phaseTimer -= dt;
+    if (game.phaseTimer<=0){
+      boss.vulnerable = false;
+      game.phase = 'calm';
+      meter = clamp(meter-4, 0, 100);
+      game.phaseTimer = clamp(1.5 + (meter/100)*5, 1.5, 6.5);
+      // resume a barrage that was paused for the slam
+      if (boss.barragePhase && boss.barragePhase.paused){
+        boss.barragePhase.paused = false;
+        boss.vulnerable = true;
+      }
+    }
+  }
+}
+
+function findNearestInteractable(){
+  let best = null, bestDist = Infinity;
+  for (const it of items){
+    if (it.state === 'held') continue;
+    if (it.growProgress != null && it.growProgress < 1) continue; // still sprouting in
+    const d = Math.hypot(player.x-it.x, player.y-it.y);
+    if (d <= INTERACT_RANGE + it.radius && d < bestDist){ best = it; bestDist = d; }
+  }
+  return best;
+}
+
+function computeThrowVelocity(screenDirName, pct, g){
+  // screenDirName is screen-relative (where the player is aiming on screen); resolve it
+  // against whichever direction is currently gravity before turning it into vx/vy.
+  const axes = screenAxes(g);
+  if (screenDirName === 'up'){
+    // toward the top of the screen, but with enough power at full charge to actually
+    // fight gravity the whole way there
+    const speed = THROW_SPEED_UP_MIN + (THROW_SPEED_UP_MAX-THROW_SPEED_UP_MIN)*pct;
+    return { x: axes.up.x*speed, y: axes.up.y*speed };
+  }
+  if (screenDirName === 'down'){
+    const speed = THROW_SPEED_MIN + (THROW_SPEED_MAX-THROW_SPEED_MIN)*pct;
+    return { x: axes.down.x*speed, y: axes.down.y*speed };
+  }
+  // left/right (screen-relative) — a slight lob: most of the speed goes sideways, a
+  // portion gets redirected toward screen-up so it arcs instead of dropping flat
+  const speed = THROW_SPEED_MIN + (THROW_SPEED_MAX-THROW_SPEED_MIN)*pct;
+  const side = axes[screenDirName];
+  return {
+    x: side.x*speed + axes.up.x*speed*THROW_ARC_BIAS,
+    y: side.y*speed + axes.up.y*speed*THROW_ARC_BIAS
+  };
+}
+
+function updateInteraction(dt){
+  if (game.result) return;
+
+  // continuous pull progress — only advances while E stays held and you stay in range
+  if (player.pulling){
+    const t = player.pulling;
+    const dist = Math.hypot(player.x-t.x, player.y-t.y);
+    if (!keys['KeyE'] || dist > (INTERACT_RANGE + t.radius) * 1.3){
+      player.pulling = null; // let go too early, or got knocked away — plant stays rooted, no penalty
+    } else {
+      t.pullProgress += dt;
+      if (t.pullProgress >= PULL_DURATION){
+        if (t.willScream){
+          t.state = 'loose'; t.x = player.x; t.y = player.y; t.vx = 0; t.vy = 0;
+          t.cryTimer = CRY_DURATION;
+          t.hasCried = true;
+          player.stun = STUN_DURATION;
+        } else {
+          t.state = 'held';
+          player.holding = t;
+        }
+        if (t.slotId) wallSlotRegrow[t.slotId] = REGROW_TIME_MIN + Math.random()*(REGROW_TIME_MAX-REGROW_TIME_MIN);
+        player.pulling = null;
+      }
+    }
+  }
+
+  const canAct = player.stun<=0 && !player.pulling;
+
+  // hold-to-charge throw: only on a press that started while already holding something
+  if (player.holding && chargeEligible && keys['KeyE'] && canAct){
+    player.throwCharging = true;
+    player.throwCharge = Math.min(player.throwCharge + dt, MAX_CHARGE_TIME);
+  }
+  if (throwReleaseRequested){
+    throwReleaseRequested = false;
+    if (canAct && player.holding){
+      const it = player.holding;
+      player.holding = null;
+      consumeItemUse(it);
+      const pct = clamp(player.throwCharge / MAX_CHARGE_TIME, 0, 1);
+      const g = effectiveGravity();
+      const vel = computeThrowVelocity(aimDir, pct, g);
+      const dir = screenAxes(g)[aimDir];
+      it.state = 'loose';
+      it.x = player.x + dir.x*(player.radius+it.radius+4);
+      it.y = player.y + dir.y*(player.radius+it.radius+4);
+      it.vx = vel.x; it.vy = vel.y;
+    }
+    player.throwCharge = 0;
+    player.throwCharging = false;
+  }
+
+  if (interactRequested){
+    interactRequested = false;
+    // (chargeEligible gating means this only ever fires when NOT already holding something —
+    // a fresh tap of E always grabs/starts a pull, never auto-throws what you're carrying)
+    if (canAct && !player.holding){
+      const target = findNearestInteractable();
+      if (target){
+        if ((target.kind === 'mandrake' || target.kind === 'root') && target.state === 'rooted'){
+          player.pulling = target;
+          target.pullProgress = 0;
+          target.willScream = target.kind === 'mandrake' && Math.random() < SCREAM_CHANCE; // rolled now, hidden — no way to tell, and plain roots never scream
+        } else if (target.state === 'loose'){
+          target.state = 'held';
+          target.fromBoss = false;
+          player.holding = target;
+        }
+      }
+    }
+  }
+
+  if (player.stun > 0) player.stun -= dt;
+}
+
+function updatePulse(dt){
+  if (pulse.cooldown>0) pulse.cooldown -= dt;
+  if (pulse.active){
+    pulse.timer -= dt;
+    if (pulse.timer<=0) pulse.active=false;
+  }
+  if (pulseRequested){
+    const canAct = player.stun<=0 && !player.pulling;
+    if (canAct && !pulse.active && pulse.cooldown<=0){
+      // resolve the screen-relative aim against gravity as it stands right now,
+      // before this pulse changes what gravity is
+      const vec = screenAxes(effectiveGravity())[aimDir];
+      pulse.active = true;
+      pulse.timer = PULSE_DURATION;
+      pulse.cooldown = PULSE_COOLDOWN;
+      pulse.dir = vec;
+      pulse.dirName = groundWallName(vec);
+      meter = clamp(meter+3, 0, 100);
+    }
+    pulseRequested = false;
+  }
+}
+
+function updateMagic(dt){
+  if (game.result) return;
+
+  // cooldown and decay timers
+  if (player.magicCooldown > 0) player.magicCooldown -= dt;
+  if (player.magicAbsorbTimer > 0) player.magicAbsorbTimer -= dt;
+
+  // stored charge drains away slowly if you never fire
+  if (player.magicStored > 0 && player.magicAbsorbTimer <= 0){
+    player.magicStored = Math.max(0, player.magicStored - MAGIC_DECAY_RATE*dt);
+  }
+
+  // absorb field: active while E is held AND no item is being carried/pulled
+  // (so E still does normal grab/pull when near an item — magic only if the field catches a bullet)
+  const canAbsorb = keys['KeyE'] && !player.holding && !player.pulling && player.stun<=0 && player.magicCooldown<=0;
+  if (canAbsorb){
+    if (player.magicAbsorbTimer <= 0) player.magicAbsorbTimer = MAGIC_ABSORB_WINDOW; // refresh window
+    // scan bullets for anything flying into the catch radius
+    bullets = bullets.filter(b => {
+      if (b.hit) return false;
+      const dist = Math.hypot(b.x-player.x, b.y-player.y);
+      if (dist < MAGIC_ABSORB_RANGE){
+        // absorbed — add to charge, cap at max
+        player.magicStored = Math.min(MAGIC_MAX_STORED, player.magicStored + 1);
+        return false; // remove from bullets array
+      }
+      return true;
+    });
+  }
+
+  // fire: release E while charged (and not holding an item — that path fires a throw instead)
+  // We detect E-release via throwReleaseRequested being false but chargeEligible being false too;
+  // simpler to just watch for the key going up when charged. Use the existing keyup listener
+  // by checking: E was just released (throwReleaseRequested cleared already if holding item),
+  // no item in hand, and enough stored. We gate on the interactRequested flag being cleared
+  // each frame — instead, watch directly via a dedicated flag set in the keyup handler.
+  if (player.magicFireRequested){
+    player.magicFireRequested = false;
+    if (player.magicStored >= 1 && !player.holding && player.magicCooldown <= 0 && player.stun<=0){
+      const stored = Math.floor(player.magicStored);
+      const g = effectiveGravity();
+      const dir = screenAxes(g)[aimDir]; // fires in the aimed direction, same as a throw
+      magicBolts.push({
+        x: player.x + dir.x*(player.radius+10),
+        y: player.y + dir.y*(player.radius+10),
+        vx: dir.x*MAGIC_BOLT_SPEED, vy: dir.y*MAGIC_BOLT_SPEED,
+        stored, life: MAGIC_BOLT_LIFETIME, radius: 8 + stored*3, hit:false
+      });
+      player.magicStored = 0;
+      player.magicCooldown = MAGIC_COOLDOWN;
+    }
+  }
+
+  // update bolts — homing gently toward the boss, damage on contact
+  const m = 80;
+  magicBolts = magicBolts.filter(bolt => {
+    if (bolt.hit || bolt.life<=0) return false;
+    bolt.life -= dt;
+
+    // gentle lateral homing: pull velocity perpendicular-toward-boss each frame
+    const dx = boss.pos.x-bolt.x, dy = boss.pos.y-bolt.y;
+    const dist = Math.hypot(dx,dy)||1;
+    const nx=dx/dist, ny=dy/dist;
+    const speed = Math.hypot(bolt.vx, bolt.vy)||1;
+    const tx=bolt.vx/speed, ty=bolt.vy/speed;
+    const cross = tx*ny - ty*nx; // sign of rotation needed
+    bolt.vx += ny*cross*(-MAGIC_BOLT_HOME*dt);
+    bolt.vy += (-nx)*cross*(-MAGIC_BOLT_HOME*dt);
+
+    // re-normalise to bolt speed so homing doesn't accelerate it
+    const newSpeed = Math.hypot(bolt.vx,bolt.vy)||1;
+    bolt.vx = bolt.vx/newSpeed*MAGIC_BOLT_SPEED;
+    bolt.vy = bolt.vy/newSpeed*MAGIC_BOLT_SPEED;
+
+    bolt.x += bolt.vx*dt; bolt.y += bolt.vy*dt;
+
+    // hit boss
+    if (Math.hypot(bolt.x-boss.pos.x, bolt.y-boss.pos.y) < bolt.radius+boss.radius){
+      if (boss.vulnerable){
+        const dmg = Math.max(1, bolt.stored);
+        boss.hp -= dmg;
+        boss.hitFlash = 0.3;
+        meter = clamp(meter+dmg*16, 0, 100);
+        triggerShake(8+bolt.stored*2, 0.25);
+        if (boss.hp<=0) game.result='won';
+      }
+      bolt.hit = true; return false;
+    }
+    return bolt.x>-m && bolt.x<ARENA.w+m && bolt.y>-m && bolt.y<ARENA.h+m;
+  });
+}
+
+function updatePlayer(dt){
+  if (game.result){ return; }
+  const g = effectiveGravity();
+  applyGravity(player, g, dt, DAMPING, player.dashBoostTimer>0 ? MAX_SPEED_DASH : MAX_SPEED);
+  if (player.dashBoostTimer>0) player.dashBoostTimer -= dt;
+
+  const canAct = player.stun<=0 && !player.pulling;
+  const tangent = rotateVec(g, -90);
+  let input = 0;
+  if (canAct){
+    if (keys['ArrowLeft']||keys['KeyA']) input -= 1;
+    if (keys['ArrowRight']||keys['KeyD']) input += 1;
+  }
+  if (input !== 0) player.facing = input; // screen-relative already (this IS the raw key intent) — sticks until you move the other way
+
+  const gw = groundWallName(g);
+  let grounded = false;
+  if (gw==='down')  grounded = player.y+player.radius >= ARENA.h-2;
+  if (gw==='up')    grounded = player.y-player.radius <= 2;
+  if (gw==='right') grounded = player.x+player.radius >= ARENA.w-2;
+  if (gw==='left')  grounded = player.x-player.radius <= 2;
+
+  // Movement is decomposed into "along the floor" (tangent) and "into the floor" (gravity
+  // axis) so releasing input can apply a crisp, non-icy stop without touching fall feel.
+  let tComp = player.vx*tangent.x + player.vy*tangent.y;
+  const nComp = player.vx*g.x + player.vy*g.y;
+  if (input !== 0){
+    tComp += input*MOVE_ACCEL*dt;
+  } else if (canAct){
+    const decel = (grounded ? GROUND_FRICTION : AIR_FRICTION)*dt;
+    if (Math.abs(tComp) <= decel) tComp = 0; else tComp -= Math.sign(tComp)*decel;
+  }
+  player.vx = tangent.x*tComp + g.x*nComp;
+  player.vy = tangent.y*tComp + g.y*nComp;
+
+  if (grounded){
+    player.dashCharges = DASH_CHARGES_MAX;
+    player.airJumpsUsed = 0;
+  }
+
+  if (dashRequested){
+    dashRequested = false;
+    if (canAct && player.dashCharges > 0){
+      player.dashCharges -= 1;
+      const isDouble = player.dashCharges === 0; // burned the 2nd charge — this IS the "double dash"
+      const dashSpeed = isDouble ? DASH_SPEED_DOUBLE : DASH_SPEED_SINGLE;
+      const tangent2 = screenAxes(g).right;
+      const nComp2 = player.vx*g.x + player.vy*g.y; // keep whatever's happening on the gravity axis untouched
+      player.vx = tangent2.x*dashSpeed*player.facing + g.x*nComp2;
+      player.vy = tangent2.y*dashSpeed*player.facing + g.y*nComp2;
+      if (isDouble) player.dashBoostTimer = DASH_BOOST_DURATION; // briefly allows exceeding the new normal cap
+    }
+  }
+
+  if (dodgeRequested){
+    dodgeRequested = false;
+    if (canAct && player.dodgeCooldown <= 0){
+      player.dodgeIframe = DODGE_IFRAME_DURATION;
+      player.dodgeCooldown = DODGE_COOLDOWN;
+      const tangent3 = screenAxes(g).right;
+      player.vx += tangent3.x*DODGE_BURST_SPEED*player.facing;
+      player.vy += tangent3.y*DODGE_BURST_SPEED*player.facing;
+      // spawn a quick burst of afterimage ghosts at the current position
+      for (let t=0; t<3; t++){
+        dodgeTrail.push({ x:player.x, y:player.y, facing:player.facing, life:0.22, maxLife:0.22, worldAngle });
+      }
+    }
+  }
+  // fade and cull afterimages
+  for (const gh of dodgeTrail) gh.life -= dt;
+  dodgeTrail = dodgeTrail.filter(gh => gh.life > 0);
+  if (player.dodgeIframe > 0) player.dodgeIframe -= dt;
+  if (player.dodgeCooldown > 0) player.dodgeCooldown -= dt;
+
+  if (jumpRequested){
+    if (canAct){
+      if (grounded){
+        player.vx -= g.x*JUMP_SPEED; player.vy -= g.y*JUMP_SPEED;
+      } else if (player.airJumpsUsed < MAX_AIR_JUMPS){
+        player.vx -= g.x*JUMP_SPEED; player.vy -= g.y*JUMP_SPEED;
+        player.airJumpsUsed += 1;
+        player.fallDist = 0; // the double jump doubles as a save — catches you mid-fall, no damage from the drop so far
+      }
+    }
+    jumpRequested = false;
+  }
+
+  if (diveRequested){
+    diveRequested = false;
+    if (canAct && !grounded){
+      player.diving = true;
+      // a committed plunge — kill horizontal drift, rocket straight down along current gravity
+      player.vx = g.x*DIVE_SPEED;
+      player.vy = g.y*DIVE_SPEED;
+    }
+  }
+
+  // accumulate distance fallen toward the *current* floor while airborne.
+  // a normal jump only ever covers ~120px of this — only a real plummet should hurt.
+  const fallSpeed = player.vx*g.x + player.vy*g.y; // positive = moving toward the floor
+  if (!grounded){
+    player.fallDist += Math.max(0, fallSpeed) * dt;
+  }
+
+  if (player.invuln>0) player.invuln -= dt;
+  const floorImpact = resolveBounds(player, 0, gw);
+  if (floorImpact > 0){
+    // landed on the floor this frame — this is the only moment that can hurt you
+    // fallResistance is a hook for the future bumper/dodge skill system: raise it to
+    // require a longer fall (or, later, scale down the damage itself) before it bites.
+    const threshold = FALL_DAMAGE_DISTANCE * (1 + player.fallResistance);
+    if (player.fallDist > threshold && player.invuln<=0 && player.dodgeIframe<=0){
+      player.hp -= 1;
+      player.invuln = INVULN_TIME;
+      meter = clamp(meter-10, 0, 100);
+      triggerShake(10, 0.3, 4);
+      if (player.hp<=0) game.result = 'lost';
+    }
+    player.fallDist = 0;
+    player.diving = false;
+  }
+
+  // solid body collision — neither of you can pass through the other. A hard enough dive
+  // straight into the vulnerable boss damages it instead of just bouncing off; either way,
+  // hitting the boss "catches" the fall, same as landing on solid ground would.
+  const bossImpact = resolvePlayerBossCollision();
+  if (bossImpact > 0 && player.diving){
+    if (bossImpact > DIVE_BOSS_MIN_IMPACT && boss.vulnerable){
+      boss.hp -= 1;
+      boss.hitFlash = 0.25;
+      meter = clamp(meter+18, 0, 100);
+      triggerShake(10, 0.3);
+      if (boss.hp<=0) game.result = 'won';
+    }
+    player.fallDist = 0;
+    player.diving = false;
+    const bnx = player.x-boss.pos.x, bny = player.y-boss.pos.y;
+    const bnd = Math.hypot(bnx,bny) || 1;
+    player.vx = (bnx/bnd)*220; player.vy = (bny/bnd)*220; // a little bounce-back, not stuck against it
+  }
+
+  if (player.holding){
+    const dir = screenAxes(g)[aimDir];
+    player.holding.x = player.x + dir.x*(player.radius+player.holding.radius*0.6);
+    player.holding.y = player.y + dir.y*(player.radius+player.holding.radius*0.6);
+    player.holding.vx = 0; player.holding.vy = 0;
+  }
+}
+
+function updateItems(dt){
+  const g = effectiveGravity();
+  for (const it of items){
+    if (it.cryTimer > 0) it.cryTimer -= dt;
+    if (it.state === 'destroyed'){ it.destroyTimer -= dt; continue; }
+    if (it.state === 'rooted'){
+      if (it.growProgress < 1) it.growProgress = Math.min(1, it.growProgress + dt/GROW_IN_DURATION);
+      continue;
+    }
+    if (it.state === 'held') continue; // already accounted for via whoever's carrying it
+
+    applyGravity(it, g, dt, DEBRIS_DAMPING);
+    resolveBounds(it, 0.45, null);
+    applyDebrisFriction(it, g, dt);
+    if (it.kind === 'box'){
+      // tumble proportional to current speed — settles to a stop on its own as the box
+      // comes to rest, no separate angular-velocity state needed
+      const spinDir = Math.abs(it.vx) > Math.abs(it.vy) ? Math.sign(it.vx||1) : Math.sign(it.vy||1);
+      it.rotation = (it.rotation||0) + spinDir*(Math.hypot(it.vx,it.vy)/it.radius)*dt*0.6;
+    }
+    if (it.hitCooldown>0) it.hitCooldown -= dt;
+    const impact = resolveCore(it);
+    if (impact > MIN_HIT_SPEED && boss.vulnerable && it.hitCooldown<=0){
+      boss.hp -= 1;
+      it.hitCooldown = 0.6;
+      boss.hitFlash = 0.25;
+      meter = clamp(meter+18, 0, 100);
+      triggerShake(8, 0.25);
+      if (boss.hp<=0) game.result = 'won';
+      breakIfSpent(it);
+    }
+    // only boss-thrown items are hazardous to you — neutral boxes/mandrakes still pass
+    // through harmlessly, same pickup feel as before
+    if (it.fromBoss && it.hitCooldown<=0 && player.invuln<=0 && player.dodgeIframe<=0){
+      const dx = it.x-player.x, dy = it.y-player.y;
+      const dist = Math.hypot(dx,dy);
+      const speed = Math.hypot(it.vx, it.vy);
+      if (dist < it.radius+player.radius && speed > MIN_HIT_SPEED){
+        const strong = it.throwStrength === 'strong';
+        const catchChance = strong ? PLAYER_CATCH_CHANCE_STRONG : PLAYER_CATCH_CHANCE_WEAK;
+        const kickChance = strong ? PLAYER_KICK_CHANCE_STRONG : PLAYER_KICK_CHANCE_WEAK;
+        let handled = false;
+        if (!player.holding && keys['KeyE'] && Math.random() < catchChance){
+          // clean catch — only happens if you're actively holding E (the grab button) at
+          // the moment of impact, same as the docs said all along — no longer a free roll
+          it.state = 'held';
+          it.fromBoss = false;
+          it.vx = 0; it.vy = 0;
+          player.holding = it;
+          handled = true;
+        }
+        // a kick doesn't need free hands — it's a reflex, not a grab
+        if (!handled && Math.random() < kickChance){
+          consumeItemUse(it);
+          const bdx = boss.pos.x-player.x, bdy = boss.pos.y-player.y;
+          const bdist = Math.hypot(bdx,bdy) || 1;
+          const bdirx = bdx/bdist, bdiry = bdy/bdist;
+          const kspread = (Math.random()-0.5)*2*KICK_SPREAD;
+          const kcos=Math.cos(kspread), ksin=Math.sin(kspread);
+          const kx = bdirx*kcos - bdiry*ksin, ky = bdirx*ksin + bdiry*kcos;
+          const kickSpeed = speed*KICK_SPEED_MULT;
+          it.vx = kx*kickSpeed; it.vy = ky*kickSpeed;
+          it.fromBoss = false;
+          it.hitCooldown = 0.25;
+          triggerShake(6, 0.15);
+          handled = true;
+        }
+        if (!handled){
+          const playerImpact = resolvePlayerHit(it);
+          if (playerImpact > MIN_HIT_SPEED){
+            player.hp -= 1;
+            player.invuln = INVULN_TIME;
+            it.hitCooldown = 0.6;
+            meter = clamp(meter-8, 0, 100);
+            triggerShake(10, 0.3, 4);
+            if (strong && dist > 0.01){
+              // strong throws knock you back on a connect, weak ones don't
+              player.vx += (dx/dist)*KNOCKBACK_STRENGTH;
+              player.vy += (dy/dist)*KNOCKBACK_STRENGTH;
+            }
+            if (player.hp<=0) game.result = 'lost';
+            breakIfSpent(it);
+          }
+        }
+      }
+    }
+  }
+  items = items.filter(it => !(it.state==='destroyed' && it.destroyTimer<=0));
+}
+
+function updateWorldRotation(dt){
+  const currentDirName = pulse.active ? pulse.dirName : baseGravityName;
+  const desired = ANGLE_FOR_DIR[currentDirName];
+  worldAngleTarget = nearestEquivalentAngle(desired, worldAngle);
+  if (bossTurn.active){
+    // boss-triggered flip — a deliberate, eased turn of the whole room, not a snap
+    bossTurn.t += dt;
+    const p = clamp(bossTurn.t/bossTurn.duration, 0, 1);
+    const eased = p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2; // easeInOutQuad
+    worldAngle = bossTurn.from + (bossTurn.to-bossTurn.from)*eased;
+    if (p>=1) bossTurn.active = false;
+  } else {
+    // your own pulse, or settling back — a fast but visible tween, not a snap
+    worldAngle += (worldAngleTarget - worldAngle) * clamp(WORLD_TWEEN_RATE*dt, 0, 1);
+  }
+}
+
+function update(dt){
+  elapsed += dt;
+  updatePhase(dt);
+  updateBoss(dt);
+  updatePulse(dt);
+  updateInteraction(dt);
+  updatePlayer(dt);
+  updateItems(dt);
+  updateBullets(dt);
+  updateMagic(dt);
+  updateRegrowth(dt);
+  updateWorldRotation(dt);
+  if (boss.hitFlash>0) boss.hitFlash -= dt;
+  if (shake.timer>0){ shake.timer -= dt; if (shake.timer<=0){ shake.mag=0; shake.rotMag=0; } }
+}
+
+// ---------- rendering ----------
+// Shared heart icon for both health bars — drawn as a path so it scales cleanly at any size.
+function drawHeart(cx, cy, size, filled, color){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(size/16, size/16); // path below is authored on a 16x16 grid
+  ctx.beginPath();
+  ctx.moveTo(0, 4);
+  ctx.bezierCurveTo(0, 1, -3, -2, -6, -2);
+  ctx.bezierCurveTo(-10, -2, -10, 3, -10, 3);
+  ctx.bezierCurveTo(-10, 7, -5, 10.5, 0, 14);
+  ctx.bezierCurveTo(5, 10.5, 10, 7, 10, 3);
+  ctx.bezierCurveTo(10, 3, 10, -2, 6, -2);
+  ctx.bezierCurveTo(3, -2, 0, 1, 0, 4);
+  ctx.closePath();
+  if (filled){ ctx.fillStyle = color; ctx.fill(); }
+  else { ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawArena(){
+  const grad = ctx.createLinearGradient(0,0,0,ARENA.h);
+  grad.addColorStop(0, '#150a18');
+  grad.addColorStop(1, '#0d0712');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,ARENA.w,ARENA.h);
+  ctx.strokeStyle = '#4a3a5c'; ctx.lineWidth = 3;
+  ctx.strokeRect(1.5,1.5,ARENA.w-3,ARENA.h-3);
+}
+
+function drawGravityArrow(){
+  const g = effectiveGravity();
+  const cx=36, cy=36, len=22;
+  ctx.save();
+  ctx.strokeStyle = pulse.active ? '#e8c468' : '#9b6bd6';
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+g.x*len, cy+g.y*len); ctx.stroke();
+  const tip = {x:cx+g.x*len, y:cy+g.y*len};
+  const b1 = rotateVec(g,150), b2 = rotateVec(g,-150);
+  ctx.beginPath();
+  ctx.moveTo(tip.x,tip.y);
+  ctx.lineTo(tip.x+b1.x*7, tip.y+b1.y*7);
+  ctx.lineTo(tip.x+b2.x*7, tip.y+b2.y*7);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawTelegraph(){
+  if (game.phase!=='approach' && game.phase!=='pushing') return;
+  // ramps up as the boss gets closer to actually committing — calmer flash while it's still
+  // traveling, faster/brighter once it's at the wall and pushing
+  const urgency = game.phase==='pushing' ? 7 : 4;
+  const alpha = 0.3 + 0.4*Math.abs(Math.sin(elapsed*urgency));
+  const dir = DIRS[game.slamDirName];
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#c4477a';
+  // tint the wall the slam will throw things toward
+  if (dir.y===1) ctx.fillRect(0, ARENA.h-14, ARENA.w, 14);
+  if (dir.y===-1) ctx.fillRect(0, 0, ARENA.w, 14);
+  if (dir.x===1) ctx.fillRect(ARENA.w-14, 0, 14, ARENA.h);
+  if (dir.x===-1) ctx.fillRect(0, 0, 14, ARENA.h);
+  ctx.restore();
+}
+
+function drawBoss(){
+  const b = boss;
+  ctx.save();
+  const shieldColor = '#7a1f3d', vulnColor = '#e8c468';
+  const baseColor = b.vulnerable ? vulnColor : shieldColor;
+  ctx.shadowColor = baseColor; ctx.shadowBlur = b.hitFlash>0 ? 40 : 22;
+  ctx.fillStyle = b.hitFlash>0 ? '#fff6e0' : baseColor;
+  ctx.beginPath(); ctx.arc(b.pos.x,b.pos.y,b.radius,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.fillStyle = '#0d0712';
+  ctx.beginPath(); ctx.arc(b.pos.x,b.pos.y,b.radius*0.45,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = baseColor;
+  ctx.beginPath(); ctx.arc(b.pos.x,b.pos.y,b.radius*0.18,0,Math.PI*2); ctx.fill();
+  // hp hearts — counter-rotated so the row stays upright/readable no matter which way
+  // the world is currently rotated (it was inheriting the room's rotation before, same
+  // class of bug the player/mandrake sprites had)
+  ctx.save();
+  ctx.translate(b.pos.x, b.pos.y-b.radius-18);
+  ctx.rotate(-worldAngle*Math.PI/180);
+  for (let i=0;i<BOSS_MAX_HP;i++){
+    const hx = -(BOSS_MAX_HP*11)/2 + i*11 + 5.5;
+    drawHeart(hx, 0, 10, i < b.hp, i < b.hp ? '#e8c468' : '#3a2c45');
+  }
+  ctx.restore();
+  // vulnerable countdown ring — "how much time do I actually have left" shouldn't require
+  // guessing from memory; this answers it at a glance, and ticks faster-feeling near the end
+  if (b.vulnerable){
+    const pct = clamp(game.phaseTimer / VULNERABLE_DURATION, 0, 1);
+    ctx.strokeStyle = '#fff6e0';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(b.pos.x, b.pos.y, b.radius+10, -Math.PI/2, -Math.PI/2 + pct*Math.PI*2);
+    ctx.stroke();
+  }
+  // winding up to throw — a clear "incoming" tell, and not coincidentally the window
+  // where it's most likely to abandon the throw and dodge instead
+  if (b.action === 'windup'){
+    const pct = clamp(1 - b.windupTimer/BOSS_WINDUP_DURATION, 0, 1);
+    ctx.strokeStyle = '#ff6b4a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(b.pos.x, b.pos.y, b.radius+16, -Math.PI/2, -Math.PI/2 + pct*Math.PI*2);
+    ctx.stroke();
+  }
+  // dodge — a quick fading streak back to where it juked from, so the motion reads clearly
+  if (b.action === 'dodging' && b.dodgeFrom){
+    ctx.strokeStyle = baseColor;
+    ctx.globalAlpha = clamp(b.dodgeTimer/BOSS_DODGE_DURATION, 0, 1) * 0.6;
+    ctx.lineWidth = b.radius*0.7;
+    ctx.beginPath();
+    ctx.moveTo(b.dodgeFrom.x, b.dodgeFrom.y);
+    ctx.lineTo(b.pos.x, b.pos.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  // a different kind of attack incoming — a violet charge-up ring, expanding as it builds,
+  // deliberately a different color from the orange item-windup ring above
+  if (b.action === 'barrageTelegraph'){
+    const pct = clamp(1 - boss.barrageTelegraphTimer/BARRAGE_TELEGRAPH_DURATION, 0, 1);
+    ctx.strokeStyle = '#c45fd6';
+    ctx.globalAlpha = 0.5 + 0.5*Math.sin(elapsed*20);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(b.pos.x, b.pos.y, b.radius + 14 + pct*26, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function drawBullets(){
+  for (const b of bullets){
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    const speed = Math.hypot(b.vx, b.vy) || 1;
+    const tx = -b.vx/speed, ty = -b.vy/speed;
+    const grad = ctx.createLinearGradient(0, 0, tx*22, ty*22);
+    grad.addColorStop(0, b.color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = b.radius*1.2;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(tx*22, ty*22); ctx.stroke();
+    ctx.shadowColor = b.color; ctx.shadowBlur = 14;
+    ctx.fillStyle = '#fff6e0';
+    ctx.beginPath(); ctx.arc(0, 0, b.radius*0.5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = b.color;
+    ctx.beginPath(); ctx.arc(0, 0, b.radius, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#fff6e0'; ctx.lineWidth = 1;
+    ctx.rotate(b.spin);
+    for (let i=0;i<4;i++){
+      const a = i*Math.PI/2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*b.radius*1.4, Math.sin(a)*b.radius*1.4);
+      ctx.lineTo(Math.cos(a)*b.radius*2.2, Math.sin(a)*b.radius*2.2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+function drawBossWallAction(){
+  if (game.phase !== 'pushing') return;
+  const t = clamp(1 - game.phaseTimer/PUSH_DURATION, 0, 1);
+  const wallPoint = wallSurfacePoint(game.slamDirName, game.wallSpotFrac);
+  ctx.save();
+  ctx.strokeStyle = '#e8c468';
+  ctx.lineWidth = 1 + t*5;
+  ctx.globalAlpha = 0.5 + t*0.5;
+  ctx.setLineDash([8,6]);
+  // dashes flow toward the wall for a push, toward the boss for a pull — a cheap but
+  // readable way to sell "which direction this force is going" without real physics
+  ctx.lineDashOffset = (game.pushOrPull==='push' ? -1 : 1) * elapsed * 60;
+  ctx.beginPath();
+  ctx.moveTo(boss.pos.x, boss.pos.y);
+  ctx.lineTo(wallPoint.x, wallPoint.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (game.pushOrPull === 'push'){
+    // anticipation glow building at the contact point, about to land
+    ctx.globalAlpha = t*0.8;
+    ctx.fillStyle = '#e8c468';
+    ctx.beginPath(); ctx.arc(wallPoint.x, wallPoint.y, 6+t*14, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawItems(){
+  for (const it of items){
+    ctx.save();
+    if (it.state === 'destroyed'){
+      // a quick burst-and-vanish instead of the normal sprite
+      const t = clamp(1 - it.destroyTimer/DESTROY_FX_DURATION, 0, 1);
+      ctx.globalAlpha = 1-t;
+      ctx.strokeStyle = '#c9a05a';
+      ctx.lineWidth = 2;
+      for (let a=0; a<6; a++){
+        const ang = a*Math.PI/3 + t*0.8;
+        const r1 = it.radius*0.3, r2 = it.radius*(0.6+t*1.6);
+        ctx.beginPath();
+        ctx.moveTo(it.x+Math.cos(ang)*r1, it.y+Math.sin(ang)*r1);
+        ctx.lineTo(it.x+Math.cos(ang)*r2, it.y+Math.sin(ang)*r2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      continue;
+    }
+    if (it.usesLeft === 1 && it.state === 'loose'){
+      // cracked — one more throw and it's gone
+      ctx.strokeStyle = '#ffb84d';
+      ctx.globalAlpha = 0.5 + 0.3*Math.sin(elapsed*7);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(it.x, it.y, it.radius+3, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+    if (it.fromBoss && it.state==='loose'){
+      const strong = it.throwStrength === 'strong';
+      ctx.strokeStyle = strong ? '#ff2244' : '#ff5577';
+      ctx.globalAlpha = (strong ? 0.65 : 0.55) + 0.4*Math.sin(elapsed*(strong?14:10));
+      ctx.lineWidth = strong ? 3 : 2;
+      ctx.beginPath(); ctx.arc(it.x, it.y, it.radius+(strong?8:6), 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (it.kind === 'box'){
+      const rot = it.state==='loose' ? (it.rotation||0) : 0;
+      ctx.save();
+      ctx.translate(it.x, it.y);
+      ctx.rotate(rot);
+      const c = it.hitCooldown>0 ? '#f4eef9' : '#8a7a55';
+      ctx.fillStyle = c;
+      ctx.shadowColor = '#c4a05a'; ctx.shadowBlur = 6;
+      ctx.fillRect(-it.radius, -it.radius, it.radius*2, it.radius*2);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#3a2c1c'; ctx.lineWidth = 2;
+      ctx.strokeRect(-it.radius, -it.radius, it.radius*2, it.radius*2);
+      ctx.beginPath();
+      ctx.moveTo(-it.radius, -it.radius); ctx.lineTo(it.radius, it.radius);
+      ctx.moveTo(it.radius, -it.radius); ctx.lineTo(-it.radius, it.radius);
+      ctx.stroke();
+      ctx.restore();
+    } else if (it.kind === 'mandrake' || it.kind === 'root'){
+      const mandrakeScale = MANDRAKE_DISPLAY_HEIGHT / MANDRAKE_SHEET_H;
+      const fullW = MANDRAKE_SHEET_W*mandrakeScale, fullH = MANDRAKE_DISPLAY_HEIGHT;
+      if (it.state === 'rooted'){
+        // leafy tuft sticking out of the ground — anchored, not yet a free object. Sourced
+        // from the plant's actual kind (Root.png for roots, Mandrake.png for mandrakes) even
+        // though the crop region itself is pixel-identical either way.
+        const gd = it.growDir || {x:0,y:-1};
+        const leafAngle = Math.atan2(gd.y, gd.x) + Math.PI/2;
+        const leafSourceImg = it.kind === 'root' ? mandrakeRootImg : mandrakeCalmImg[0];
+        if (leafSourceImg.ready){
+          const leafH = MANDRAKE_LEAF_CROP_H*mandrakeScale;
+          const grow = it.growProgress!=null ? it.growProgress : 1;
+          ctx.save();
+          ctx.translate(it.x, it.y);
+          ctx.rotate(leafAngle);
+          ctx.scale(grow, grow); // sprouts up from nothing rather than just popping in
+          // source art is drawn growing straight up; rotating by leafAngle re-aims it to
+          // match growDir, same convention the old procedural leaves used
+          ctx.drawImage(leafSourceImg, 0,0,MANDRAKE_SHEET_W,MANDRAKE_LEAF_CROP_H,
+                         -fullW/2, -leafH, fullW, leafH);
+          ctx.restore();
+        } else {
+          const perp = { x:-gd.y, y:gd.x };
+          ctx.fillStyle = '#5fae6a';
+          ctx.shadowColor = '#5fae6a'; ctx.shadowBlur = 5;
+          for (let i=-1;i<=1;i++){
+            ctx.beginPath();
+            ctx.ellipse(it.x+gd.x*6+perp.x*i*5, it.y+gd.y*6+perp.y*i*5, 4, 11, leafAngle, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+        if (player.pulling === it){
+          const pct = clamp(it.pullProgress/PULL_DURATION, 0, 1);
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#e8c468'; ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(it.x+gd.x*30, it.y+gd.y*30, 12, -Math.PI/2, -Math.PI/2 + pct*Math.PI*2);
+          ctx.stroke();
+        }
+      } else if (it.kind === 'root'){
+        // a plain extracted root — no face drama, just Root.png throughout
+        const img = mandrakeRootImg;
+        if (img.ready){
+          ctx.save();
+          ctx.translate(it.x, it.y);
+          ctx.rotate(-worldAngle*Math.PI/180); // stays upright relative to current gravity
+          ctx.scale(it.flip, 1);
+          if (it.hitCooldown>0){ ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 10; }
+          ctx.drawImage(img, -fullW/2, -fullH/2, fullW, fullH);
+          ctx.restore();
+        } else {
+          const c = it.hitCooldown>0 ? '#f4eef9' : '#c9b27a';
+          ctx.fillStyle = c;
+          ctx.shadowColor = '#c9a05a'; ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.ellipse(it.x, it.y, it.radius*0.8, it.radius*1.05, 0, 0, Math.PI*2);
+          ctx.fill();
+        }
+      } else {
+        // extracted mandrake — now a free-floating little creature, crying it out if the pull
+        // went loud. Mandrake.png is the default look; once it's cried even once it settles
+        // into Mandrake_2.png afterward instead of going back to its original expression.
+        let img;
+        if (it.cryTimer > 0){
+          const elapsedCry = CRY_DURATION - it.cryTimer;
+          const frame = Math.floor(elapsedCry/CRY_FRAME_TIME) % 2;
+          img = mandrakeCryImg[frame];
+        } else {
+          img = mandrakeCalmImg[it.hasCried ? 1 : 0];
+        }
+        if (img.ready){
+          ctx.save();
+          ctx.translate(it.x, it.y);
+          ctx.rotate(-worldAngle*Math.PI/180); // stays upright relative to current gravity, same as the player —
+                                                 // it had been locked to the room's rotation, which looked wrong
+                                                 // (sideways/upside-down) whenever gravity wasn't pointing down
+          ctx.scale(it.flip, 1);
+          if (it.hitCooldown>0){ ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 10; }
+          ctx.drawImage(img, -fullW/2, -fullH/2, fullW, fullH);
+          ctx.restore();
+        } else {
+          const c = it.hitCooldown>0 ? '#f4eef9' : '#c9b27a';
+          ctx.fillStyle = c;
+          ctx.shadowColor = '#5fae6a'; ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.ellipse(it.x, it.y, it.radius*0.8, it.radius*1.05, 0, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function drawMagic(){
+  // absorb field — a green pulsing ring while E is held and the window is open
+  if (player.magicAbsorbTimer > 0 && !player.holding){
+    const pulse = 0.5 + 0.5*Math.sin(elapsed*18);
+    ctx.save();
+    ctx.strokeStyle = '#7be88a';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.35 + 0.45*pulse;
+    ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.arc(player.x, player.y, MAGIC_ABSORB_RANGE, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // flying magic bolts
+  for (const bolt of magicBolts){
+    ctx.save();
+    ctx.translate(bolt.x, bolt.y);
+    // outer glow
+    ctx.shadowColor = '#7be88a'; ctx.shadowBlur = 20 + bolt.stored*4;
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#7be88a';
+    ctx.beginPath(); ctx.arc(0, 0, bolt.radius, 0, Math.PI*2); ctx.fill();
+    // bright core
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, 0, bolt.radius*0.35, 0, Math.PI*2); ctx.fill();
+    // rotating inner ring — shows how many bullets are packed in
+    ctx.strokeStyle = '#3de87a';
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.7;
+    ctx.rotate(elapsed * 3.5);
+    for (let i=0; i<bolt.stored; i++){
+      const a = (i/bolt.stored)*Math.PI*2;
+      ctx.beginPath(); ctx.arc(Math.cos(a)*bolt.radius*0.6, Math.sin(a)*bolt.radius*0.6, 2.5, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+function drawPlayer(){
+  const g = effectiveGravity();
+
+  // afterimage trail — drawn first so it sits behind the actual sprite
+  if (dodgeTrail.length && playerSpriteReady){
+    const aspect = playerSprite.naturalWidth / playerSprite.naturalHeight;
+    const spriteH = PLAYER_SPRITE_HEIGHT, spriteW = spriteH*aspect;
+    const footY = player.radius + 4;
+    for (const gh of dodgeTrail){
+      const alpha = clamp(gh.life/gh.maxLife, 0, 1) * 0.5;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(gh.x, gh.y);
+      ctx.rotate(-gh.worldAngle*Math.PI/180);
+      ctx.scale(gh.facing, 1);
+      ctx.shadowColor = '#bdf0f0'; ctx.shadowBlur = 18;
+      ctx.drawImage(playerSprite, -spriteW/2, footY-spriteH, spriteW, spriteH);
+      ctx.restore();
+    }
+  }
+
+  ctx.save();
+  if (player.stun > 0 && Math.floor(player.stun*20)%2===0){
+    ctx.globalAlpha = 0.45;
+  }
+  const glowColor = player.dodgeIframe>0 ? '#bdf0f0' : player.invuln>0 ? '#ff9090' : (player.pulling ? '#e8c468' : (pulse.active ? '#e8c468' : '#9b6bd6'));
+  if (player.dodgeIframe > 0) ctx.globalAlpha = 0.6; // a brief shimmer/fade while genuinely untouchable
+
+  if (playerSpriteReady){
+    const aspect = playerSprite.naturalWidth / playerSprite.naturalHeight;
+    const spriteH = PLAYER_SPRITE_HEIGHT, spriteW = spriteH*aspect;
+    const footY = player.radius + 4; // feet land a touch below the hit-circle's center
+    ctx.translate(player.x, player.y);
+    ctx.rotate(-worldAngle*Math.PI/180); // cancel the room's rotation — sprite stays screen-upright
+    ctx.scale(player.facing, 1); // flip to face the screen-direction you're moving
+    ctx.shadowColor = glowColor; ctx.shadowBlur = 12;
+    ctx.drawImage(playerSprite, -spriteW/2, footY-spriteH, spriteW, spriteH);
+  } else {
+    // sprite hasn't decoded yet (near-instant for an embedded image, but just in case)
+    ctx.fillStyle = '#f4eef9';
+    ctx.shadowColor = glowColor; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(player.x,player.y,player.radius,0,Math.PI*2); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle='#16121d'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(player.x,player.y);
+  ctx.lineTo(player.x-g.x*player.radius*1.4, player.y-g.y*player.radius*1.4);
+  ctx.stroke();
+  if (player.throwCharging && player.throwCharge > 0){
+    const pct = clamp(player.throwCharge/MAX_CHARGE_TIME, 0, 1);
+    ctx.strokeStyle = '#e8c468'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius+8, -Math.PI/2, -Math.PI/2 + pct*Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHUD(){
+  ctx.save();
+  // hearts
+  for (let i=0;i<PLAYER_MAX_HP;i++){
+    drawHeart(16+i*20+7, CH-30+7, 13, i < player.hp, i < player.hp ? '#c4477a' : '#3a2c45');
+  }
+  // pulse cooldown bar
+  ctx.fillStyle = '#2a1f38';
+  ctx.fillRect(16, CH-52, 120, 8);
+  const pct = pulse.cooldown>0 ? 1-(pulse.cooldown/PULSE_COOLDOWN) : 1;
+  ctx.fillStyle = pulse.active ? '#e8c468' : '#9b6bd6';
+  ctx.fillRect(16, CH-52, 120*pct, 8);
+  ctx.font='11px monospace'; ctx.fillStyle='#a89bc0';
+  ctx.fillText('PULSE  aim: '+aimDir.toUpperCase(), 142, CH-46);
+
+  // dodge (Q) cooldown bar
+  ctx.fillStyle = '#2a1f38';
+  ctx.fillRect(16, CH-72, 80, 6);
+  const dodgePct = player.dodgeCooldown>0 ? 1-(player.dodgeCooldown/DODGE_COOLDOWN) : 1;
+  ctx.fillStyle = player.dodgeIframe>0 ? '#bdf0f0' : '#5fb8c4';
+  ctx.fillRect(16, CH-72, 80*dodgePct, 6);
+  ctx.font='10px monospace'; ctx.fillStyle='#a89bc0';
+  ctx.fillText('DODGE [Q]', 100, CH-66);
+
+  // magic charge pips — one circle per stored bullet, fills green, fires on E-release
+  const magicFull = Math.floor(player.magicStored);
+  const magicFrac = player.magicStored - magicFull;
+  for (let i=0; i<MAGIC_MAX_STORED; i++){
+    const cx = 16 + i*16 + 7, cy = CH-85;
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2);
+    ctx.fillStyle = i < magicFull ? '#7be88a' : '#2a1f38'; ctx.fill();
+    // partial fill on the next pip
+    if (i === magicFull && magicFrac > 0){
+      ctx.beginPath(); ctx.arc(cx, cy, 5, -Math.PI/2, -Math.PI/2 + magicFrac*Math.PI*2);
+      ctx.lineTo(cx, cy); ctx.fillStyle = '#7be88a'; ctx.fill();
+    }
+    ctx.strokeStyle = '#4a3a5c'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.font='10px monospace'; ctx.fillStyle = player.magicCooldown>0 ? '#4a3a5c' : '#7be88a';
+  ctx.fillText(player.magicCooldown>0 ? 'MAGIC (cooldown)' : player.magicStored>=1 ? 'MAGIC [E] fire' : 'MAGIC [hold E] absorb bullets', 16+MAGIC_MAX_STORED*16+4, CH-80);
+
+  // carry/pull status + contextual prompt
+  let carryLabel = '';
+  if (player.pulling) carryLabel = 'PULLING...';
+  else if (player.holding) carryLabel = `HOLDING ${player.holding.kind.toUpperCase()}  [hold E] charge throw, release to fire (aim: ${aimDir})`;
+  else {
+    const near = findNearestInteractable();
+    if (near) carryLabel = (near.kind==='mandrake'||near.kind==='root') && near.state==='rooted' ? '[hold E] pull' : '[E] pick up';
+  }
+  if (carryLabel){
+    ctx.font='11px monospace'; ctx.fillStyle = player.pulling ? '#e8c468' : '#a89bc0';
+    ctx.fillText(carryLabel, 16, CH-62);
+  }
+
+  // dominion meter
+  const mx=CW-236, my=CH-52, mw=220, mh=14;
+  ctx.fillStyle='#7a1f3d'; ctx.fillRect(mx,my,mw,mh);
+  ctx.fillStyle='#e8c468'; ctx.fillRect(mx, my, mw*(meter/100), mh);
+  ctx.strokeStyle='#e8e0f0'; ctx.lineWidth=1; ctx.strokeRect(mx,my,mw,mh);
+  ctx.font='11px monospace'; ctx.fillStyle='#a89bc0'; ctx.textAlign='left';
+  ctx.fillText('BOSS', mx, my-4);
+  ctx.textAlign='right'; ctx.fillText('YOU', mx+mw, my-4);
+  ctx.textAlign='left';
+
+  ctx.font='13px monospace'; ctx.fillStyle='#e8e0f0';
+  const calmLabel = {
+    idle: 'watching...',
+    seekItem: 'BOSS REACHING FOR AMMO',
+    windup: 'BOSS WINDING UP A THROW',
+    dodging: 'BOSS DODGING',
+    barrageTelegraph: '— INCOMING —',
+    barrage: 'BULLET PHASE'
+  }[boss.action] || 'watching...';
+  const phaseLabel = {
+    calm: calmLabel,
+    approach: `MOVING TO THE ${game.slamDirName.toUpperCase()} WALL`,
+    pushing: `${game.pushOrPull==='push' ? 'PUSHING' : 'PULLING'} THE ${game.slamDirName.toUpperCase()} WALL`,
+    vulnerable: 'CORE EXPOSED — STRIKE'
+  }[game.phase];
+  ctx.textAlign='center';
+  ctx.fillText(phaseLabel, CW/2, CH-10);
+  ctx.textAlign='left';
+
+  if (game.result){
+    ctx.fillStyle = 'rgba(7,5,9,0.78)';
+    ctx.fillRect(0,0,CW,CH);
+    ctx.textAlign='center';
+    ctx.font='bold 30px monospace';
+    ctx.fillStyle = game.result==='won' ? '#e8c468' : '#c4477a';
+    ctx.fillText(game.result==='won' ? "THE GOD'S GRIP SLIPS" : "OVERWHELMED", CW/2, CH/2-10);
+    ctx.font='14px monospace'; ctx.fillStyle='#a89bc0';
+    ctx.fillText('Press R to try again', CW/2, CH/2+22);
+    ctx.textAlign='left';
+  }
+  ctx.restore();
+}
+
+function render(){
+  ctx.clearRect(0,0,CW,CH);
+  const sx = shake.mag>0 ? (Math.random()-0.5)*shake.mag : 0;
+  const sy = shake.mag>0 ? (Math.random()-0.5)*shake.mag : 0;
+  const rotJitter = shake.rotMag>0 ? (Math.random()-0.5)*shake.rotMag : 0;
+
+  ctx.save();
+  ctx.translate(CW/2+sx, CH/2+sy);
+  ctx.rotate((worldAngle+rotJitter) * Math.PI/180);
+  ctx.translate(-ARENA.w/2, -ARENA.h/2);
+  drawArena();
+  drawTelegraph();
+  drawBoss();
+  drawBossWallAction();
+  drawItems();
+  drawMagic();
+  drawPlayer();
+  drawBullets();
+  drawGravityArrow();
+  ctx.restore();
+
+  drawHUD();
+}
+
+// ---------- loop ----------
+let last = performance.now();
+function frame(now){
+  const rawDt = Math.min((now-last)/1000, 1/30);
+  last = now;
+  let dt = rawDt;
+  if (hitStop > 0){
+    hitStop -= rawDt;          // counts down in real time, so it can't get stuck
+    dt = rawDt * 0.06;          // nearly frozen rather than fully stopped — avoids any divide-by-zero edge cases downstream
+  }
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
