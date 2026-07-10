@@ -17,9 +17,9 @@
   <div id="info">
     <b>Move:</b> A/D &nbsp; <b>Jump / Double Jump:</b> Space or W &nbsp; <b>Dash ×2:</b> double-tap A/D or Ctrl &nbsp;
     <b>Dive (airborne):</b> double-tap S &nbsp; <b>Dodge:</b> Q &nbsp; <b>Aim:</b> Arrow keys &nbsp;
-    <b>Pulse:</b> Shift &nbsp; <b>Grab / Pull:</b> E (hold to pull rooted plants) &nbsp;
-    <b>Throw:</b> hold E then release &nbsp; <b>Catch incoming:</b> hold E on impact &nbsp;
-    <b>Counter-magic:</b> hold E near bullets to absorb them, release E to fire them back &nbsp; <b>Reset:</b> R
+    <b>Pulse:</b> Shift &nbsp; <b>Grab / Pull:</b> E &nbsp; <b>Throw:</b> hold E then release &nbsp;
+    <b>Eat plant:</b> F &nbsp; <b>Counter-magic:</b> hold E near bullets to absorb, release to fire &nbsp;
+    <b>If grabbed:</b> mash any key to fill the struggle bar and break free, or Q to dodge out instantly &nbsp; <b>Reset:</b> R
   </div>
 </div>
 
@@ -58,8 +58,8 @@ const mandrakeCryImg   = [makeMandrakeImg("iVBORw0KGgoAAAANSUhEUgAAAC8AAAA7CAYAA
 // ---------- tuning ----------
 const GRAVITY_ACCEL   = 1500;
 const MOVE_ACCEL       = 1900; // was 2200 — a little slower baseline now that dash exists
-const GROUND_FRICTION   = 5200; // was 2600 — crisp, immediate stop on the ground
-const AIR_FRICTION      = 1400; // horizontal drag while airborne — prevents coasting after a dash or slam
+const GROUND_FRICTION   = 5200;
+const AIR_FRICTION      = 2400; // was 1400 — stronger air drag stops the sliding feel
 const JUMP_SPEED        = 600;
 const MAX_SPEED         = 780;  // was 950 — new normal cap; dashing is what gets you back up to speed
 const MAX_SPEED_DASH    = 950;  // today's old cap — a full double-dash temporarily allows this much
@@ -94,7 +94,7 @@ const PUSH_DURATION       = 0.5; // how long the push/pull animation takes befor
 const BOSS_TURN_DURATION  = 0.6; // how long the arena visibly takes to turn once the boss commits — a real
                                    // turn, not a snap, since the boss is physically muscling the wall around
 const VULNERABLE_DURATION = 3.2; // was 2.4 — too tight to actually capitalize on once you account for recovery
-const BOSS_MAX_HP       = 5;
+const BOSS_MAX_HP       = 10;
 const PLAYER_MAX_HP     = 4;
 const INVULN_TIME       = 0.7;
 const PLAYER_SPRITE_HEIGHT = 56; // display height in px; width follows the source image's own aspect ratio
@@ -169,8 +169,27 @@ const MAGIC_BOLT_HOME     = 200;  // lateral pull toward the boss per second (ge
 const MAGIC_COOLDOWN      = 3.5;  // post-fire lockout
 const MAGIC_DECAY_RATE    = 5;    // stored bullets drain at this rate (per sec) if never fired
 
-const ITEM_DURABILITY_MIN = 2;
-const ITEM_DURABILITY_MAX = 5; // randomized per item so they don't all wear out at the same rate
+// ---------- eat plant for health ----------
+const EAT_HEALTH_AMOUNT  = 1;    // HP restored per plant eaten
+const EAT_COOLDOWN       = 4.0;  // can't eat constantly
+const BOSS_EAT_CHANCE    = 0.25; // odds boss tries to eat a plant it grabs vs throw it
+
+// ---------- boss: grab player ----------
+const BOSS_GRAB_RANGE    = 55;   // must be this close to attempt a grab
+const BOSS_GRAB_CHANCE   = 0.018;// per-frame chance when in range and idle — rare but real
+const BOSS_GRAB_DURATION = 2.5;  // how long the boss holds before deciding throw vs release
+const GRAB_STRUGGLE_MAX  = 100;  // fill this by mashing any key to break free early
+const GRAB_STRUGGLE_PER_KEY = 18;// how much each keypress fills the struggle bar
+const GRAB_THROW_SPEED   = 520;  // how hard you get launched when the boss decides to throw
+const BOSS_GRAB_COOLDOWN = 12;   // after a grab, the boss can't attempt another for this long
+
+// ---------- boss: pull rooted plants ----------
+const BOSS_PULL_CHANCE   = 0.3;  // when wandering and there's a rooted plant nearby, sometimes goes for it
+const BOSS_PULL_RANGE    = 80;   // how close the boss must get to a rooted plant slot to begin pulling
+const BOSS_PULL_DURATION = 1.8;  // how long the boss holds before uprooting
+
+const ITEM_DURABILITY_MIN = 4;
+const ITEM_DURABILITY_MAX = 8;
 const DESTROY_FX_DURATION = 0.3; // little burst-and-vanish when something finally breaks
 function randomDurability(){ return ITEM_DURABILITY_MIN + Math.floor(Math.random()*(ITEM_DURABILITY_MAX-ITEM_DURABILITY_MIN+1)); }
 
@@ -260,10 +279,13 @@ let bossTurn = { active:false, t:0, duration:0.6, from:0, to:0 }; // the eased "
 let dashRequested = false;
 let diveRequested = false;
 let dodgeRequested = false;
+let eatRequested = false;
+let wiggleCount = 0; // incremented on any keypress while grabbed, used to fill struggle bar
 let bullets = [];
 let magicBolts = [];
 let dodgeTrail = []; // afterimage ghosts left behind during a dodge
-let wallSlotRegrow = {}; // wallSide -> remaining time, only present while that slot is empty
+let gameLoop = 'plants'; // 'plants' | 'barrage' | 'regrowing'
+let wallSlotRegrow = {};
 let worldAngle, worldAngleTarget;
 let interactRequested = false;
 let throwReleaseRequested = false;
@@ -300,17 +322,13 @@ function makeWallPlant(slot, growing){
 // All fixed plant slots — 2 per wall, 8 total. Keys are slot.id, used by wallSlotRegrow
 // and each plant's own .slotId field so regrowth knows exactly where to put the new one.
 const WALL_SLOTS = [
-  {id:'bottom_0', side:'bottom', x:ARENA.w*0.28, y:ARENA.h-26},
-  {id:'bottom_1', side:'bottom', x:ARENA.w*0.65, y:ARENA.h-26},
-  {id:'top_0',    side:'top',    x:ARENA.w*0.35, y:26},
-  {id:'top_1',    side:'top',    x:ARENA.w*0.72, y:26},
-  {id:'left_0',   side:'left',   x:26,            y:ARENA.h*0.30},
-  {id:'left_1',   side:'left',   x:26,            y:ARENA.h*0.68},
-  {id:'right_0',  side:'right',  x:ARENA.w-26,    y:ARENA.h*0.32},
-  {id:'right_1',  side:'right',  x:ARENA.w-26,    y:ARENA.h*0.70},
+  {id:'bottom', side:'bottom', x:ARENA.w*0.50, y:ARENA.h-26},
+  {id:'top',    side:'top',    x:ARENA.w*0.50, y:26},
+  {id:'left',   side:'left',   x:26,            y:ARENA.h*0.50},
+  {id:'right',  side:'right',  x:ARENA.w-26,    y:ARENA.h*0.50},
 ];
-const REGROW_TIME_MIN = 14, REGROW_TIME_MAX = 26;
-const GROW_IN_DURATION = 0.6;
+const REGROW_DELAY     = 1.8;  // stagger between each plant sprouting after the barrage ends
+const GROW_IN_DURATION = 0.7;
 
 function updateRegrowth(dt){
   for (const slotId in wallSlotRegrow){
@@ -329,11 +347,14 @@ function resetGame(){
              throwCharge:0, throwCharging:false, facing:1,
              dashCharges:DASH_CHARGES_MAX, dashBoostTimer:0,
              airJumpsUsed:0, diving:false, dodgeCooldown:0, dodgeIframe:0,
-             magicStored:0, magicAbsorbTimer:0, magicCooldown:0 };
+             magicStored:0, magicAbsorbTimer:0, magicCooldown:0,
+             grabbed:false, struggleMeter:0, eatCooldown:0 };
   boss   = { pos:{x:ARENA.w/2, y:ARENA.h*0.4}, radius:36, hp:BOSS_MAX_HP, vulnerable:false, hitFlash:0,
              wanderTarget:{x:ARENA.w/2, y:ARENA.h*0.4}, wanderTimer:1.2,
              action:'idle', holding:null, seekTarget:null, windupTimer:0, attackCooldown:2.5, justCaught:false,
              dodgeCooldown:0, dodgeTimer:0, dodgeTarget:null, dodgeFrom:null, lastDodgedThreat:null,
+             grabCooldown:0, grabTimer:0, grabTarget:null,
+             pullPlantTarget:null, pullPlantTimer:0,
              barrageCooldown: 5+Math.random()*4, barrageTelegraphTimer:0, barragePhase:null };
   // Rooted plants can't move when gravity flips (only loose items can), so they're
   // useless if they all sit on one wall — one per wall means there's always something
@@ -359,7 +380,11 @@ function resetGame(){
   aimStack = [];
   dashRequested = false;
   diveRequested = false;
+  dodgeRequested = false;
+  eatRequested = false;
+  wiggleCount = 0;
   wallSlotRegrow = {};
+  gameLoop = 'plants';
   bullets = [];
   magicBolts = [];
   dodgeTrail = [];
@@ -399,6 +424,9 @@ window.addEventListener('keydown', e=>{
     if (isDoubleTap(e.code)) diveRequested = true;
   }
   if (e.code==='KeyQ') dodgeRequested = true;
+  if (e.code==='KeyF') eatRequested = true;
+  // any button press while grabbed fills the struggle bar
+  if (player && player.grabbed) wiggleCount++;
   if (e.code==='KeyR') resetGame();
 });
 window.addEventListener('keyup', e=>{
@@ -945,13 +973,161 @@ function updateBossThreatResponse(dt){
 // Orchestrates everything that moves boss.pos: dodging or mid-windup (whether from a normal
 // grab or from just catching something) both override whatever game.phase would otherwise
 // have it doing, since it can't do two things at once.
+function allPlantsGone(){
+  // only trigger once there are truly no plants left at all — rooted, loose, or held
+  const hasAny = items.some(it => it.kind==='mandrake' || it.kind==='root');
+  return !hasAny && Object.keys(wallSlotRegrow).length === 0;
+}
+
+function scheduleAllRegrowth(){
+  WALL_SLOTS.forEach((slot, i) => {
+    wallSlotRegrow[slot.id] = REGROW_DELAY * (i + 1);
+  });
+}
+
+function updateGameLoop(dt){
+  if (game.result) return;
+
+  if (gameLoop === 'plants'){
+    if (allPlantsGone()){
+      gameLoop = 'barrage';
+      boss.action = 'barrageTelegraph';
+      boss.barrageTelegraphTimer = BARRAGE_TELEGRAPH_DURATION;
+    }
+  } else if (gameLoop === 'barrage'){
+    if (boss.action === 'idle' && !boss.barragePhase){
+      gameLoop = 'regrowing';
+      scheduleAllRegrowth();
+    }
+  } else if (gameLoop === 'regrowing'){
+    const pendingRegrow = Object.keys(wallSlotRegrow).length > 0;
+    const notFullyGrown = items.some(it =>
+      (it.kind==='mandrake'||it.kind==='root') && it.state==='rooted' && it.growProgress < 1
+    );
+    if (!pendingRegrow && !notFullyGrown){
+      gameLoop = 'plants';
+    }
+  }
+}
+
+function findNearestRootedPlant(){
+  let best=null, bestDist=Infinity;
+  for (const it of items){
+    if ((it.kind==='mandrake'||it.kind==='root') && it.state==='rooted' && it.growProgress>=1){
+      const d = Math.hypot(boss.pos.x-it.x, boss.pos.y-it.y);
+      if (d < bestDist){ bestDist=d; best=it; }
+    }
+  }
+  return {plant:best, dist:bestDist};
+}
+
+function updateBossGrabPlayer(dt){
+  if (boss.grabCooldown > 0) boss.grabCooldown -= dt;
+  if (boss.action !== 'idle' || boss.grabCooldown > 0) return;
+  if (player.grabbed || player.invuln > 0 || player.dodgeIframe > 0) return;
+
+  const dist = Math.hypot(boss.pos.x-player.x, boss.pos.y-player.y);
+  if (dist < BOSS_GRAB_RANGE && Math.random() < BOSS_GRAB_CHANCE){
+    boss.action = 'grabPlayer';
+    boss.grabTimer = BOSS_GRAB_DURATION;
+    boss.grabTarget = player;
+    player.grabbed = true;
+    player.struggleMeter = 0;
+    // drop whatever the player was holding
+    if (player.holding){ player.holding.state='loose'; player.holding=null; }
+    player.pulling = null;
+  }
+}
+
+function updateBossGrabTick(dt){
+  if (boss.action !== 'grabPlayer') return;
+  boss.grabTimer -= dt;
+
+  // boss eats if it has low HP and a plant happens to be very close
+  const {plant, dist} = findNearestRootedPlant();
+  if (plant && dist < 40 && Math.random() < BOSS_EAT_CHANCE * dt){
+    plant.state = 'destroyed'; plant.destroyTimer = DESTROY_FX_DURATION;
+    boss.hp = Math.min(BOSS_MAX_HP, boss.hp + 1);
+    boss.hitFlash = 0.2;
+  }
+
+  if (boss.grabTimer <= 0 || !player.grabbed){
+    if (player.grabbed){
+      // decide: throw or just drop
+      if (Math.random() < 0.6){
+        // throw the player away
+        const g = effectiveGravity();
+        const dx = player.x-boss.pos.x, dy = player.y-boss.pos.y;
+        const d = Math.hypot(dx,dy)||1;
+        player.vx = (dx/d)*GRAB_THROW_SPEED; player.vy = (dy/d)*GRAB_THROW_SPEED;
+        player.grabbed = false;
+        if (player.invuln <= 0){
+          player.hp -= 1;
+          player.invuln = INVULN_TIME;
+          meter = clamp(meter-10, 0, 100);
+          triggerShake(12, 0.35, 5);
+          if (player.hp <= 0) game.result = 'lost';
+        }
+      } else {
+        player.grabbed = false;
+        player.invuln = INVULN_TIME;
+      }
+    }
+    player.grabbed = false;
+    boss.action = 'idle';
+    boss.grabTarget = null;
+    boss.grabCooldown = BOSS_GRAB_COOLDOWN;
+  }
+}
+
+function updateBossPullPlant(dt){
+  // boss occasionally wanders toward a rooted plant and yanks it out to eat or throw
+  if (game.phase !== 'calm') return;
+  if (boss.action !== 'idle' && boss.action !== 'pullPlant') return;
+
+  if (boss.action === 'idle' && gameLoop === 'plants' && Math.random() < BOSS_PULL_CHANCE * dt){
+    const {plant, dist} = findNearestRootedPlant();
+    if (plant && dist < BOSS_SEEK_MAX_RANGE){
+      boss.pullPlantTarget = plant;
+      boss.pullPlantTimer = BOSS_PULL_DURATION;
+      boss.action = 'pullPlant';
+    }
+  }
+
+  if (boss.action === 'pullPlant'){
+    const target = boss.pullPlantTarget;
+    if (!target || target.state !== 'rooted'){ boss.action='idle'; boss.pullPlantTarget=null; return; }
+    stepToward(boss.pos, {x:target.x, y:target.y}, BOSS_APPROACH_SPEED, dt);
+    boss.pullPlantTimer -= dt;
+    if (boss.pullPlantTimer <= 0){
+      // yanked out — boss decides: eat it or throw it
+      target.state = 'loose'; target.x = boss.pos.x; target.y = boss.pos.y; target.vx=0; target.vy=0;
+      if (boss.hp < BOSS_MAX_HP && Math.random() < BOSS_EAT_CHANCE){
+        // eat it for HP
+        target.state = 'destroyed'; target.destroyTimer = DESTROY_FX_DURATION;
+        boss.hp = Math.min(BOSS_MAX_HP, boss.hp + 1);
+        boss.hitFlash = 0.2;
+        meter = clamp(meter-8, 0, 100);
+      } else {
+        // throw it at the player
+        const vel = bossThrowVelocityToward(player, boss.pos, BOSS_THROW_SPREAD, 1.0);
+        target.vx = vel.x; target.vy = vel.y;
+        target.fromBoss = true; target.throwStrength = 'weak';
+      }
+      boss.action = 'idle'; boss.pullPlantTarget = null;
+    }
+  }
+}
+
 function updateBoss(dt){
   if (game.result) return;
 
-  // tick the barrage phase from any game.phase so orbit + bullet spawning continue across
-  // calm/approach/pushing/vulnerable — except when paused (slams pause it, resume on calm)
   if (boss.barragePhase && boss.action === 'barrage') updateBarragePhase(dt);
 
+  // handle an active grab tick first — it overrides everything else
+  if (boss.action === 'grabPlayer'){ updateBossGrabTick(dt); return; }
+
+  updateBossGrabPlayer(dt); // attempt a new grab if conditions are right
   updateBossThreatResponse(dt);
 
   if (boss.action === 'dodging'){
@@ -966,16 +1142,17 @@ function updateBoss(dt){
   if (game.phase === 'calm'){
     if (boss.action === 'idle'){
       updateBossWander(dt);
-      boss.attackCooldown -= dt;
-      boss.barrageCooldown -= dt;
-      if (boss.barrageCooldown <= 0){
-        boss.action = 'barrageTelegraph';
-        boss.barrageTelegraphTimer = BARRAGE_TELEGRAPH_DURATION;
-      } else if (boss.attackCooldown <= 0){
-        const target = findLooseItemForBoss();
-        if (target){ boss.action = 'seekItem'; boss.seekTarget = target; }
-        else boss.attackCooldown = 1.5;
+      updateBossPullPlant(dt); // may change action to 'pullPlant'
+      if (gameLoop === 'plants' && boss.action === 'idle'){
+        boss.attackCooldown -= dt;
+        if (boss.attackCooldown <= 0){
+          const target = findLooseItemForBoss();
+          if (target){ boss.action = 'seekItem'; boss.seekTarget = target; }
+          else boss.attackCooldown = 1.5;
+        }
       }
+    } else if (boss.action === 'pullPlant'){
+      updateBossPullPlant(dt);
     } else if (boss.action === 'seekItem'){
       updateBossSeekItem(dt);
     } else if (boss.action === 'barrageTelegraph'){
@@ -1104,7 +1281,8 @@ function updateInteraction(dt){
           t.state = 'held';
           player.holding = t;
         }
-        if (t.slotId) wallSlotRegrow[t.slotId] = REGROW_TIME_MIN + Math.random()*(REGROW_TIME_MAX-REGROW_TIME_MIN);
+        // no individual regrow scheduled here — regrowth only happens as a batch
+        // after the barrage phase ends (updateGameLoop handles it)
         player.pulling = null;
       }
     }
@@ -1179,6 +1357,38 @@ function updatePulse(dt){
       meter = clamp(meter+3, 0, 100);
     }
     pulseRequested = false;
+  }
+}
+
+function updateEat(dt){
+  if (game.result) return;
+  if (player.eatCooldown > 0) player.eatCooldown -= dt;
+
+  if (eatRequested){
+    eatRequested = false;
+    if (player.eatCooldown <= 0 && player.stun <= 0 && !player.grabbed){
+      // eat a held plant first, otherwise nearest loose one
+      let target = null;
+      if (player.holding && (player.holding.kind==='mandrake'||player.holding.kind==='root')){
+        target = player.holding;
+        player.holding = null;
+      } else {
+        for (const it of items){
+          if ((it.kind==='mandrake'||it.kind==='root') && it.state==='loose'){
+            const d = Math.hypot(it.x-player.x, it.y-player.y);
+            if (d < INTERACT_RANGE + it.radius){ target = it; break; }
+          }
+        }
+      }
+      if (target){
+        target.state = 'destroyed';
+        target.destroyTimer = DESTROY_FX_DURATION;
+        player.hp = Math.min(PLAYER_MAX_HP, player.hp + EAT_HEALTH_AMOUNT);
+        player.eatCooldown = EAT_COOLDOWN;
+        triggerShake(4, 0.15);
+        meter = clamp(meter + 5, 0, 100);
+      }
+    }
   }
 }
 
@@ -1276,9 +1486,48 @@ function updateMagic(dt){
 
 function updatePlayer(dt){
   if (game.result){ return; }
+
+  // while grabbed by the boss — player is held at boss's position, mash keys to escape
+  if (player.grabbed){
+    player.x = boss.pos.x;
+    player.y = boss.pos.y + boss.radius + player.radius;
+    player.vx = 0; player.vy = 0;
+    player.stun = 0; // can't be additionally stunned while grabbed
+
+    // each wiggle keypress fills the bar
+    player.struggleMeter = Math.min(GRAB_STRUGGLE_MAX, player.struggleMeter + wiggleCount * GRAB_STRUGGLE_PER_KEY);
+    wiggleCount = 0;
+
+    // dodge always breaks a grab immediately
+    if (dodgeRequested){
+      dodgeRequested = false;
+      player.grabbed = false; boss.action = 'idle'; boss.grabTarget = null;
+      player.dodgeIframe = DODGE_IFRAME_DURATION;
+      player.dodgeCooldown = DODGE_COOLDOWN;
+      const g2 = effectiveGravity();
+      const tan = screenAxes(g2).right;
+      player.vx += tan.x*DODGE_BURST_SPEED*player.facing;
+      player.vy += tan.y*DODGE_BURST_SPEED*player.facing;
+      return;
+    }
+
+    if (player.struggleMeter >= GRAB_STRUGGLE_MAX){
+      // wriggled free!
+      player.grabbed = false; boss.action = 'idle'; boss.grabTarget = null;
+      player.struggleMeter = 0;
+      player.invuln = INVULN_TIME;
+      boss.grabCooldown = BOSS_GRAB_COOLDOWN;
+      const g2 = effectiveGravity();
+      player.vx -= g2.x * 280; player.vy -= g2.y * 280; // pop upward away from boss
+    }
+    return; // no other movement while grabbed
+  }
+  player.struggleMeter = 0; // reset while free
+
   const g = effectiveGravity();
   applyGravity(player, g, dt, DAMPING, player.dashBoostTimer>0 ? MAX_SPEED_DASH : MAX_SPEED);
   if (player.dashBoostTimer>0) player.dashBoostTimer -= dt;
+
 
   const canAct = player.stun<=0 && !player.pulling;
   const tangent = rotateVec(g, -90);
@@ -1534,8 +1783,10 @@ function update(dt){
   elapsed += dt;
   updatePhase(dt);
   updateBoss(dt);
+  updateGameLoop(dt);
   updatePulse(dt);
   updateInteraction(dt);
+  updateEat(dt);
   updatePlayer(dt);
   updateItems(dt);
   updateBullets(dt);
@@ -1838,22 +2089,24 @@ function drawItems(){
           ctx.stroke();
         }
       } else if (it.kind === 'root'){
-        // a plain extracted root — no face drama, just Root.png throughout
+        // extracted root — rendered on its side (tilted) to visually distinguish from
+        // upright mandrakes at a glance, regardless of how similar the sprite bodies look
         const img = mandrakeRootImg;
+        const rootW = fullW*0.8, rootH = fullH*0.8;
         if (img.ready){
           ctx.save();
           ctx.translate(it.x, it.y);
-          ctx.rotate(-worldAngle*Math.PI/180); // stays upright relative to current gravity
+          ctx.rotate(-worldAngle*Math.PI/180 + Math.PI*0.35 * it.flip); // tilted ~63°, direction by flip
           ctx.scale(it.flip, 1);
           if (it.hitCooldown>0){ ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 10; }
-          ctx.drawImage(img, -fullW/2, -fullH/2, fullW, fullH);
+          else { ctx.shadowColor = '#c9a05a'; ctx.shadowBlur = 5; }
+          ctx.drawImage(img, -rootW/2, -rootH/2, rootW, rootH);
           ctx.restore();
         } else {
-          const c = it.hitCooldown>0 ? '#f4eef9' : '#c9b27a';
-          ctx.fillStyle = c;
+          ctx.fillStyle = it.hitCooldown>0 ? '#f4eef9' : '#c9b27a';
           ctx.shadowColor = '#c9a05a'; ctx.shadowBlur = 6;
           ctx.beginPath();
-          ctx.ellipse(it.x, it.y, it.radius*0.8, it.radius*1.05, 0, 0, Math.PI*2);
+          ctx.ellipse(it.x, it.y, it.radius*1.2, it.radius*0.5, 0.5, 0, Math.PI*2);
           ctx.fill();
         }
       } else {
@@ -1995,6 +2248,34 @@ function drawPlayer(){
   ctx.restore();
 }
 
+function drawGrabEffect(){
+  if (!player.grabbed) return;
+  ctx.save();
+  // chain from boss hand to player
+  ctx.strokeStyle = '#e8c468';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8,5]);
+  ctx.lineDashOffset = -elapsed*40;
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(boss.pos.x, boss.pos.y);
+  ctx.lineTo(player.x, player.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // struggle ring around the player — fills as they mash
+  const pct = clamp(player.struggleMeter / GRAB_STRUGGLE_MAX, 0, 1);
+  ctx.strokeStyle = '#ff9900';
+  ctx.lineWidth = 5;
+  ctx.shadowColor = '#ff9900'; ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.radius+14, -Math.PI/2, -Math.PI/2 + pct*Math.PI*2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
 function drawHUD(){
   ctx.save();
   // hearts
@@ -2018,6 +2299,27 @@ function drawHUD(){
   ctx.fillRect(16, CH-72, 80*dodgePct, 6);
   ctx.font='10px monospace'; ctx.fillStyle='#a89bc0';
   ctx.fillText('DODGE [Q]', 100, CH-66);
+
+  // eat cooldown bar
+  ctx.fillStyle = '#2a1f38';
+  ctx.fillRect(16, CH-88, 60, 5);
+  const eatPct = player.eatCooldown>0 ? 1-(player.eatCooldown/EAT_COOLDOWN) : 1;
+  ctx.fillStyle = '#7be88a';
+  ctx.fillRect(16, CH-88, 60*eatPct, 5);
+  ctx.font='10px monospace'; ctx.fillStyle='#a89bc0';
+  ctx.fillText('EAT [F]', 80, CH-83);
+
+  // grabbed status — shown in the center so it's impossible to miss
+  if (player.grabbed){
+    ctx.save();
+    ctx.font='bold 16px monospace';
+    ctx.fillStyle='#ff9900';
+    ctx.textAlign='center';
+    ctx.shadowColor='#ff9900'; ctx.shadowBlur=12;
+    ctx.fillText('GRABBED — MASH ANY KEY TO ESCAPE  [Q] dodge free', CW/2, CH/2+50);
+    ctx.textAlign='left'; ctx.shadowBlur=0;
+    ctx.restore();
+  }
 
   // magic charge pips — one circle per stored bullet, fills green, fires on E-release
   const magicFull = Math.floor(player.magicStored);
@@ -2110,6 +2412,7 @@ function render(){
   drawItems();
   drawMagic();
   drawPlayer();
+  drawGrabEffect();
   drawBullets();
   drawGravityArrow();
   ctx.restore();
